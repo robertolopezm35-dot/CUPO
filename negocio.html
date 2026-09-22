@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO — Panel del negocio</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="dash-header">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <div class="dash-user">
+    <span id="userName"></span>
+    <div class="avatar" id="userAvatar"></div>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">Salir</button>
+  </div>
+</header>
+
+<main class="dash-main">
+  <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
+  <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda.</p>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="num" id="statAvailable">0</div>
+      <div class="lbl">Cupos disponibles</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" id="statBooked">0</div>
+      <div class="lbl">Cupos reservados</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" id="statIncome">$0</div>
+      <div class="lbl">Ingreso potencial de hoy</div>
+    </div>
+  </div>
+
+  <div class="biz-card">
+    <p class="biz-name" style="margin-bottom:14px">Horarios de hoy</p>
+    <div class="slot-list" id="slotList"></div>
+
+    <div class="add-slot-row">
+      <div class="field">
+        <label>Hora</label>
+        <select id="newHour"></select>
+      </div>
+      <div class="field">
+        <label>Duración (min)</label>
+        <input type="number" id="newDuration" value="45" min="15" step="15">
+      </div>
+      <div class="field">
+        <label>Precio</label>
+        <input type="number" id="newPrice" value="200" min="0" step="10">
+      </div>
+      <button class="btn btn-primary" id="addSlotBtn">+ Publicar cupo</button>
+    </div>
+  </div>
+
+  <div style="margin-top:32px">
+    <h2 class="section-title" style="font-size:22px;text-align:left">Clientes agendados</h2>
+    <div id="bookingsList"></div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/store.js"></script>
+<script src="js/negocio.js"></script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO — Entrar</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+</nav>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="role-toggle">
+      <button type="button" id="roleClienteBtn" class="active">Cliente</button>
+      <button type="button" id="roleNegocioBtn">Negocio</button>
+    </div>
+
+    <h1 id="authTitle">Crear cuenta</h1>
+    <p class="sub" id="authSub">Encuentra citas de último momento cerca de ti.</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <!-- REGISTER: CLIENTE -->
+    <form class="form-panel" id="registerClienteForm" data-role="cliente" data-mode="register">
+      <div class="field">
+        <label>Nombre completo</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Teléfono</label>
+        <input type="tel" name="phone" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" name="password" required minlength="4">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Crear cuenta de cliente</button>
+    </form>
+
+    <!-- REGISTER: NEGOCIO -->
+    <form class="form-panel" id="registerNegocioForm" data-role="negocio" data-mode="register">
+      <div class="field">
+        <label>Nombre del negocio</label>
+        <input type="text" name="name" required>
+      </div>
+      <div class="field">
+        <label>Categoría</label>
+        <select name="category" required>
+          <option value="Barbería">Barbería</option>
+          <option value="Salón">Salón</option>
+          <option value="Spa">Spa</option>
+          <option value="Estética">Estética</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Dirección</label>
+        <input type="text" name="address" required>
+      </div>
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" name="password" required minlength="4">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Registrar mi negocio</button>
+    </form>
+
+    <!-- LOGIN: CLIENTE -->
+    <form class="form-panel" id="loginClienteForm" data-role="cliente" data-mode="login">
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" name="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
+    </form>
+
+    <!-- LOGIN: NEGOCIO -->
+    <form class="form-panel" id="loginNegocioForm" data-role="negocio" data-mode="login">
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" name="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
+    </form>
+
+    <div class="mode-toggle">
+      <span id="modeToggleText">¿Ya tienes cuenta?</span>
+      <button type="button" id="modeToggleBtn">Inicia sesión</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/store.js"></script>
+<script src="js/auth.js"></script>
+</body>
+</html>

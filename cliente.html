@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO — Cupos disponibles</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="dash-header">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <div class="dash-user">
+    <span id="userName"></span>
+    <div class="avatar" id="userAvatar"></div>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">Salir</button>
+  </div>
+</header>
+
+<main class="dash-main">
+  <h1 class="dash-title">Cupos disponibles hoy</h1>
+  <p class="dash-sub">Reserva al instante, sin esperar respuesta.</p>
+
+  <div class="toolbar" id="categoryFilters">
+    <button class="chip active" data-category="Todas">Todas</button>
+  </div>
+
+  <div id="businessList"></div>
+
+  <div style="margin-top:40px">
+    <h2 class="section-title" style="font-size:22px;text-align:left">Mis reservas</h2>
+    <div id="reservationsList"></div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h3>Confirmar reserva</h3>
+    <p id="confirmText"></p>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="cancelBookBtn">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="confirmBookBtn">Reservar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/store.js"></script>
+<script src="js/cliente.js"></script>
+</body>
+</html>
