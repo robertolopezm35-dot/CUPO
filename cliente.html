@@ -23,6 +23,11 @@
 
   <div class="area-tabs" id="areaTabs"></div>
 
+  <div class="search-row">
+    <input type="text" id="searchInput" class="search-input" placeholder="Buscar por nombre de negocio...">
+    <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
+  </div>
+
   <div class="toolbar" id="categoryFilters"></div>
 
   <div id="comingSoonPanel" class="coming-soon-panel" hidden>
@@ -41,10 +46,10 @@
 
 <div class="modal-overlay" id="confirmModal">
   <div class="modal">
-    <h3>Confirmar reserva</h3>
+    <h3 id="confirmTitle">Confirmar reserva</h3>
     <p id="confirmText"></p>
     <div class="modal-actions">
-      <button class="btn btn-outline btn-block" id="cancelBookBtn">Cancelar</button>
+      <button class="btn btn-outline btn-block" id="cancelBookBtn">Regresar</button>
       <button class="btn btn-primary btn-block" id="confirmBookBtn">Reservar</button>
     </div>
   </div>

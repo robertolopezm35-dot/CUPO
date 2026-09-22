@@ -18,7 +18,10 @@
 </header>
 
 <main class="dash-main">
-  <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
+    <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
+  </div>
   <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda.</p>
 
   <div class="stat-row">
@@ -62,6 +65,28 @@
     <div id="bookingsList"></div>
   </div>
 </main>
+
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h3>Editar negocio</h3>
+    <div class="field">
+      <label>Nombre del negocio</label>
+      <input type="text" id="editName">
+    </div>
+    <div class="field">
+      <label>Categoría</label>
+      <select id="editCategory"></select>
+    </div>
+    <div class="field">
+      <label>Dirección</label>
+      <input type="text" id="editAddress">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="cancelEditBtn">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="saveEditBtn">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 

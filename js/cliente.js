@@ -22,12 +22,19 @@
 
   let activeArea = CupoStore.AREAS.find((a) => !a.comingSoon).id;
   let activeCategory = "Todas";
-  let pendingBooking = null;
+  let searchTerm = "";
+  let userLocation = null;
+  let pendingAction = null;
 
   const areaTabsEl = document.getElementById("areaTabs");
   const filtersEl = document.getElementById("categoryFilters");
   const comingSoonPanel = document.getElementById("comingSoonPanel");
   const businessListEl = document.getElementById("businessList");
+  const searchInput = document.getElementById("searchInput");
+  const sortNearbyBtn = document.getElementById("sortNearbyBtn");
+  const confirmModal = document.getElementById("confirmModal");
+  const confirmTitle = document.getElementById("confirmTitle");
+  const confirmText = document.getElementById("confirmText");
 
   function renderAreaTabs() {
     areaTabsEl.innerHTML = CupoStore.AREAS.map((area) => `
@@ -74,6 +81,13 @@
     });
   }
 
+  function showToast(msg) {
+    const toast = document.getElementById("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 2200);
+  }
+
   function hashStr(s) {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -92,12 +106,41 @@
     };
   }
 
-  function showToast(msg) {
-    const toast = document.getElementById("toast");
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 2200);
+  function openConfirm(title, text, action) {
+    confirmTitle.textContent = title;
+    confirmText.textContent = text;
+    pendingAction = action;
+    confirmModal.classList.add("show");
   }
+
+  sortNearbyBtn.addEventListener("click", () => {
+    if (!navigator.geolocation) {
+      showToast("Tu navegador no soporta ubicación.");
+      return;
+    }
+    sortNearbyBtn.disabled = true;
+    sortNearbyBtn.textContent = "Ubicando...";
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        sortNearbyBtn.disabled = false;
+        sortNearbyBtn.textContent = "📍 Ordenado por cercanía";
+        showToast("Mostrando los negocios más cercanos primero.");
+        renderBusinesses();
+      },
+      () => {
+        sortNearbyBtn.disabled = false;
+        sortNearbyBtn.textContent = "📍 Ordenar por cercanía";
+        showToast("No pudimos obtener tu ubicación. Revisa los permisos del navegador.");
+      },
+      { timeout: 8000 }
+    );
+  });
+
+  searchInput.addEventListener("input", () => {
+    searchTerm = searchInput.value.trim().toLowerCase();
+    renderBusinesses();
+  });
 
   function renderBusinesses() {
     const area = CupoStore.AREAS.find((a) => a.id === activeArea);
@@ -108,9 +151,20 @@
     if (activeCategory !== "Todas") {
       businesses = businesses.filter((b) => b.category === activeCategory);
     }
+    if (searchTerm) {
+      businesses = businesses.filter((b) => b.name.toLowerCase().includes(searchTerm));
+    }
+
+    if (userLocation) {
+      businesses = businesses.map((b) => ({
+        ...b,
+        distanceKm: CupoStore.distanceKm(userLocation.lat, userLocation.lng, b.lat, b.lng),
+      }));
+      businesses.sort((a, b) => a.distanceKm - b.distanceKm);
+    }
 
     if (businesses.length === 0) {
-      list.innerHTML = '<div class="empty-state">No hay negocios en esta categoría todavía.</div>';
+      list.innerHTML = '<div class="empty-state">No encontramos negocios con esos filtros.</div>';
       return;
     }
 
@@ -126,6 +180,10 @@
         : '<span style="color:var(--gray);font-size:13.5px">Sin horarios publicados</span>';
 
       const photo = businessPhoto(b);
+      const distanceHtml = typeof b.distanceKm === "number"
+        ? `<span class="distance-pill">${b.distanceKm < 1 ? Math.round(b.distanceKm * 1000) + " m" : b.distanceKm.toFixed(1) + " km"}</span>`
+        : "";
+
       return `<div class="biz-card">
         <div class="biz-photo" style="background:${photo.css}"><span class="photo-icon">${photo.emoji}</span></div>
         <div class="biz-head">
@@ -134,6 +192,7 @@
             <div class="biz-meta">
               <span>${b.address}</span>
               <span>★ ${b.rating}</span>
+              ${distanceHtml}
             </div>
           </div>
           <span class="badge">${b.category}</span>
@@ -148,10 +207,20 @@
         const slotId = el.dataset.slot;
         const business = CupoStore.getBusinesses().find((b) => b.id === businessId);
         const slot = business.slots.find((s) => s.id === slotId);
-        pendingBooking = { businessId, slotId };
-        document.getElementById("confirmText").textContent =
-          `${business.name} · ${slot.label} · $${slot.price}. ¿Confirmas tu reserva?`;
-        document.getElementById("confirmModal").classList.add("show");
+        openConfirm(
+          "Confirmar reserva",
+          `${business.name} · ${slot.label} · $${slot.price}. ¿Confirmas tu reserva?`,
+          () => {
+            const result = CupoStore.bookSlot(businessId, slotId, client);
+            if (!result.ok) {
+              showToast(result.error);
+            } else {
+              showToast("¡Cupo reservado con éxito!");
+              renderBusinesses();
+              renderReservations();
+            }
+          }
+        );
       });
     });
   }
@@ -166,29 +235,45 @@
     }
     el.innerHTML = '<div class="biz-card">' + reservations.map((r) =>
       `<div class="reservation-row">
-        <span>${r.businessName} · ${r.label}</span>
-        <strong>$${r.price}</strong>
+        <div class="res-info">
+          <span>${r.businessName} · ${r.label}</span>
+        </div>
+        <div class="res-price">
+          <strong>$${r.price}</strong>
+          <button type="button" class="btn-link-danger" data-business="${r.businessId}" data-slot="${r.slotId}" data-name="${r.businessName}" data-label="${r.label}">Cancelar</button>
+        </div>
       </div>`
     ).join("") + '</div>';
+
+    el.querySelectorAll(".btn-link-danger").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const businessId = btn.dataset.business;
+        const slotId = btn.dataset.slot;
+        openConfirm(
+          "Cancelar reserva",
+          `¿Seguro que quieres cancelar tu reserva en ${btn.dataset.name} (${btn.dataset.label})? El cupo se liberará para otros clientes.`,
+          () => {
+            CupoStore.cancelReservation(client.id, businessId, slotId);
+            showToast("Reserva cancelada.");
+            renderBusinesses();
+            renderReservations();
+          }
+        );
+      });
+    });
   }
 
   document.getElementById("cancelBookBtn").addEventListener("click", () => {
-    pendingBooking = null;
-    document.getElementById("confirmModal").classList.remove("show");
+    pendingAction = null;
+    confirmModal.classList.remove("show");
   });
 
   document.getElementById("confirmBookBtn").addEventListener("click", () => {
-    if (!pendingBooking) return;
-    const result = CupoStore.bookSlot(pendingBooking.businessId, pendingBooking.slotId, client);
-    document.getElementById("confirmModal").classList.remove("show");
-    if (!result.ok) {
-      showToast(result.error);
-    } else {
-      showToast("¡Cupo reservado con éxito!");
-      renderBusinesses();
-      renderReservations();
-    }
-    pendingBooking = null;
+    if (!pendingAction) return;
+    const action = pendingAction;
+    pendingAction = null;
+    confirmModal.classList.remove("show");
+    action();
   });
 
   renderAreaTabs();

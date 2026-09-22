@@ -25,6 +25,40 @@
     window.location.href = "index.html";
   });
 
+  const editModal = document.getElementById("editModal");
+  const editCategorySelect = document.getElementById("editCategory");
+  CupoStore.CATEGORIES.forEach((cat) => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    editCategorySelect.appendChild(opt);
+  });
+
+  document.getElementById("editProfileBtn").addEventListener("click", () => {
+    document.getElementById("editName").value = business.name;
+    document.getElementById("editCategory").value = business.category;
+    document.getElementById("editAddress").value = business.address;
+    editModal.classList.add("show");
+  });
+
+  document.getElementById("cancelEditBtn").addEventListener("click", () => {
+    editModal.classList.remove("show");
+  });
+
+  document.getElementById("saveEditBtn").addEventListener("click", () => {
+    const name = document.getElementById("editName").value.trim();
+    const category = document.getElementById("editCategory").value;
+    const address = document.getElementById("editAddress").value.trim();
+    if (!name || !address) return;
+    CupoStore.updateBusiness(business.id, { name, category, address });
+    editModal.classList.remove("show");
+    showToast("Perfil actualizado.");
+    render();
+    document.getElementById("userName").textContent = business.name;
+    document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
+    document.getElementById("bizTitle").textContent = business.name;
+  });
+
   const hourSelect = document.getElementById("newHour");
   for (let h = 8; h <= 21; h++) {
     const displayH = h % 12 === 0 ? 12 : h % 12;
