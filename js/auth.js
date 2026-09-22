@@ -21,9 +21,9 @@
   const countryCodeSelect = document.getElementById("countryCodeSelect");
   CupoStore.COUNTRY_CODES.forEach((c) => {
     const opt = document.createElement("option");
-    opt.value = c.code;
-    opt.textContent = c.label;
-    if (c.code === "+52") opt.selected = true;
+    opt.value = c.iso;
+    opt.textContent = c.flag + " " + c.name + " (" + c.dial + ")";
+    if (c.iso === "MX") opt.selected = true;
     countryCodeSelect.appendChild(opt);
   });
 
@@ -81,7 +81,7 @@
       lastName: fd.get("lastName").trim(),
       email: fd.get("email"),
       password: fd.get("password"),
-      countryCode: fd.get("countryCode"),
+      countryCode: CupoStore.COUNTRY_CODES.find((c) => c.iso === fd.get("countryIso")).dial,
       phone,
     });
     if (!result.ok) return showError(result.error);
