@@ -43,6 +43,16 @@ por construir cuando se decida el stack de backend.
 - **Patente más parecida encontrada:** US20220414607A1 (gestión de citas/reasignación de
   cancelaciones/notificaciones). Diferencia de CUPO: sincroniza *varios* negocios a la
   vez y notifica por geolocalización al cliente más cercano.
+- **Fotos de negocio:** cada tarjeta muestra un banner con gradiente + emoji de categoría
+  (generado por código, con color/tono variado por negocio). No son fotos reales — no
+  hay licencia para usar fotos de Google Maps sin pasar por su Places API (requiere API
+  key con facturación y no se puede cachear la imagen), así que se dejó como placeholder
+  honesto hasta que haya backend o los negocios suban su propia foto.
+- **Buscador, cancelar reserva, ordenar por cercanía y editar negocio:** el cliente puede
+  buscar por nombre, cancelar una reserva ya hecha (reabre el cupo), y ordenar la lista
+  por distancia real usando `navigator.geolocation` del navegador contra coordenadas
+  aproximadas por colonia asignadas a cada negocio (no geocodificación exacta). El
+  negocio puede editar nombre/categoría/dirección desde su panel.
 
 ## Enlaces
 
