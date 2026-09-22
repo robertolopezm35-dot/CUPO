@@ -24,6 +24,15 @@ const CupoStore = (() => {
 
   const CATEGORIES = AREAS.find((a) => a.id === "estetica").categories;
 
+  const CATEGORY_VISUALS = {
+    "Barbería": { emoji: "💈", hue: 35 },
+    "Salón": { emoji: "💇", hue: 340 },
+    "Spa": { emoji: "🧖", hue: 175 },
+    "Uñas": { emoji: "💅", hue: 10 },
+    "Maquillaje": { emoji: "💄", hue: 280 },
+    "Estética facial": { emoji: "🧴", hue: 200 },
+  };
+
   function flagEmoji(iso) {
     return iso.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
   }
@@ -476,6 +485,7 @@ const CupoStore = (() => {
   return {
     AREAS,
     CATEGORIES,
+    CATEGORY_VISUALS,
     COUNTRY_CODES,
     init,
     getBusinesses,

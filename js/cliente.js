@@ -74,6 +74,24 @@
     });
   }
 
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+
+  function businessPhoto(b) {
+    const v = CupoStore.CATEGORY_VISUALS[b.category] || { emoji: "✨", hue: 243 };
+    const h = hashStr(b.id);
+    const hue = v.hue + (h % 14) - 7;
+    const l1 = 60 - (h % 8);
+    const l2 = 42 - (h % 6);
+    return {
+      emoji: v.emoji,
+      css: `linear-gradient(135deg, hsl(${hue} 70% ${l1}%), hsl(${hue + 22} 65% ${l2}%))`,
+    };
+  }
+
   function showToast(msg) {
     const toast = document.getElementById("toast");
     toast.textContent = msg;
@@ -107,7 +125,9 @@
           }).join("")
         : '<span style="color:var(--gray);font-size:13.5px">Sin horarios publicados</span>';
 
+      const photo = businessPhoto(b);
       return `<div class="biz-card">
+        <div class="biz-photo" style="background:${photo.css}"><span class="photo-icon">${photo.emoji}</span></div>
         <div class="biz-head">
           <div>
             <p class="biz-name">${b.name}</p>
