@@ -266,66 +266,47 @@ const CupoStore = (() => {
 
   function seedBusinesses() {
     return [
-      {
-        id: "b1",
-        name: "Barbería Central",
-        category: "Barbería",
-        address: "Av. Reforma 120, CDMX",
-        email: "central@cupo.mx",
-        password: "1234",
-        rating: 4.8,
-        slots: seedSlots(15, 4, 180),
-      },
-      {
-        id: "b2",
-        name: "Salón Bella",
-        category: "Salón",
-        address: "Calle Juárez 45, CDMX",
-        email: "bella@cupo.mx",
-        password: "1234",
-        rating: 4.6,
-        slots: seedSlots(14, 3, 250),
-      },
-      {
-        id: "b3",
-        name: "Spa Relax",
-        category: "Spa",
-        address: "Insurgentes Sur 900, CDMX",
-        email: "relax@cupo.mx",
-        password: "1234",
-        rating: 4.9,
-        slots: seedSlots(16, 3, 450),
-      },
-      {
-        id: "b4",
-        name: "Estética Luna",
-        category: "Estética facial",
-        address: "Av. Universidad 300, CDMX",
-        email: "luna@cupo.mx",
-        password: "1234",
-        rating: 4.7,
-        slots: seedSlots(13, 4, 200),
-      },
-      {
-        id: "b5",
-        name: "Nails & Co",
-        category: "Uñas",
-        address: "Colonia Roma Norte, CDMX",
-        email: "nails@cupo.mx",
-        password: "1234",
-        rating: 4.9,
-        slots: seedSlots(12, 4, 150),
-      },
-      {
-        id: "b6",
-        name: "Glow Makeup Studio",
-        category: "Maquillaje",
-        address: "Polanco, CDMX",
-        email: "glow@cupo.mx",
-        password: "1234",
-        rating: 4.8,
-        slots: seedSlots(17, 3, 350),
-      },
+      // Barberías
+      { id: "b1", name: "Bravos Barbería", category: "Barbería", address: "Barrio Antiguo, Monterrey", email: "bravos@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(15, 4, 180) },
+      { id: "b2", name: "Alpha Barberías", category: "Barbería", address: "Col. Contry, Monterrey", email: "alpha@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(14, 4, 190) },
+      { id: "b3", name: "La Barbería Nacional", category: "Barbería", address: "Cumbres, Monterrey", email: "nacional@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(16, 3, 200) },
+      { id: "b4", name: "BarbaNegra", category: "Barbería", address: "Col. Del Valle, San Pedro Garza García", email: "barbanegra@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(13, 4, 170) },
+      { id: "b5", name: "MTM Barber Club", category: "Barbería", address: "Col. Mitras, Monterrey", email: "mtm@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(17, 3, 210) },
+
+      // Salones
+      { id: "b6", name: "D'Anna Estilistas", category: "Salón", address: "Monterrey", email: "danna@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(14, 3, 300) },
+      { id: "b7", name: "Yuv & Co. Style", category: "Salón", address: "Monterrey", email: "yuv@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 4, 280) },
+      { id: "b8", name: "La Luna Saloon & Boutik", category: "Salón", address: "Monterrey", email: "laluna@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(15, 3, 320) },
+      { id: "b9", name: "El Alessa Beauty Salon", category: "Salón", address: "Monterrey", email: "alessa@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(11, 4, 260) },
+      { id: "b10", name: "Women's Hair Estética Unisex", category: "Salón", address: "Monterrey", email: "womenshair@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(16, 3, 270) },
+
+      // Spas
+      { id: "b11", name: "Mantra Mind & Body Spa", category: "Spa", address: "Río Moctezuma 303, Col. Del Valle, San Pedro Garza García", email: "mantra@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(10, 3, 1250) },
+      { id: "b12", name: "Azuleno Spa", category: "Spa", address: "Río Amazonas 60 Ote, San Pedro Garza García", email: "azuleno@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(11, 3, 1100) },
+      { id: "b13", name: "Facial Co Spa", category: "Spa", address: "Av. Lázaro Cárdenas 2510, Local 12A, San Pedro Garza García", email: "facialco@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(9, 4, 950) },
+      { id: "b14", name: "O. Spa Salón (O. Sierra Madre)", category: "Spa", address: "Av. Manuel Gómez Morín 1105, San Pedro Garza García", email: "osierramadre@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 3, 1050) },
+      { id: "b15", name: "Thann Sanctuary", category: "Spa", address: "San Pedro Garza García", email: "thann@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(13, 3, 1300) },
+
+      // Uñas
+      { id: "b16", name: "HG Nails", category: "Uñas", address: "Roque González Garza 140, San Pedro Garza García", email: "hgnails@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(11, 4, 280) },
+      { id: "b17", name: "Only Nails Del Valle", category: "Uñas", address: "Río Missouri 555, Col. Del Valle, San Pedro Garza García", email: "onlynailsdelvalle@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(10, 4, 260) },
+      { id: "b18", name: "Only Nails San Agustín", category: "Uñas", address: "Av. Real San Agustín, San Pedro Garza García", email: "onlynailssa@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(14, 4, 250) },
+      { id: "b19", name: "The New Black Beauty Lab", category: "Uñas", address: "Barrio Antiguo, Monterrey", email: "newblack@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(12, 3, 300) },
+      { id: "b20", name: "Only Nails Cumbres", category: "Uñas", address: "Paseo de los Leones 3433, Cumbres, Monterrey", email: "onlynailscumbres@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(15, 3, 255) },
+
+      // Maquillaje
+      { id: "b21", name: "Be Glamour Studio", category: "Maquillaje", address: "Monterrey", email: "beglamour@cupo.mx", password: "1234", rating: 4.0, slots: seedSlots(10, 3, 600) },
+      { id: "b22", name: "Glo Makeup Studio Mty", category: "Maquillaje", address: "Monterrey", email: "glomakeup@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(16, 3, 650) },
+      { id: "b23", name: "Fernanda Montelongo Makeup Artist", category: "Maquillaje", address: "Monterrey", email: "fernandamtg@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(11, 3, 700) },
+      { id: "b24", name: "Artemis Vázquez Makeup Artist", category: "Maquillaje", address: "Monterrey", email: "artemisv@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(9, 3, 680) },
+      { id: "b25", name: "A'M Hair & Makeup Artist", category: "Maquillaje", address: "Monterrey", email: "amhair@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(14, 3, 720) },
+
+      // Estética facial
+      { id: "b26", name: "Skinklinik Med Spa", category: "Estética facial", address: "Terranova 329, Col. Vista Hermosa, Monterrey", email: "skinklinik@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(10, 3, 900) },
+      { id: "b27", name: "Nubody", category: "Estética facial", address: "Monterrey", email: "nubody@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 3, 1100) },
+      { id: "b28", name: "Dra. Gina González Beyou", category: "Estética facial", address: "Monterrey", email: "drginagonzalez@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(9, 3, 1200) },
+      { id: "b29", name: "Dra. Sindy Sánchez", category: "Estética facial", address: "Plaza Mirador, Guadalupe", email: "drasindysanchez@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(13, 3, 1150) },
+      { id: "b30", name: "JOSSCLAUDE & BeLLVeR", category: "Estética facial", address: "Monterrey", email: "jossclaude@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(15, 3, 850) },
     ];
   }
 
