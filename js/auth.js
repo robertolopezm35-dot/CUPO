@@ -18,6 +18,15 @@
     "negocio-login": document.getElementById("loginNegocioForm"),
   };
 
+  const countryCodeSelect = document.getElementById("countryCodeSelect");
+  CupoStore.COUNTRY_CODES.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.code;
+    opt.textContent = c.label;
+    if (c.code === "+52") opt.selected = true;
+    countryCodeSelect.appendChild(opt);
+  });
+
   const copy = {
     "cliente-register": { title: "Crear cuenta", sub: "Encuentra citas de último momento cerca de ti.", toggleText: "¿Ya tienes cuenta?", toggleBtn: "Inicia sesión" },
     "negocio-register": { title: "Registra tu negocio", sub: "Publica tus cupos disponibles y llena tu agenda.", toggleText: "¿Ya tienes cuenta?", toggleBtn: "Inicia sesión" },
@@ -65,11 +74,15 @@
   forms["cliente-register"].addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const phone = fd.get("phone").trim();
+    if (!/^\d{10}$/.test(phone)) return showError("El teléfono debe tener 10 dígitos.");
     const result = CupoStore.registerClient({
-      name: fd.get("name"),
+      firstName: fd.get("firstName").trim(),
+      lastName: fd.get("lastName").trim(),
       email: fd.get("email"),
       password: fd.get("password"),
-      phone: fd.get("phone"),
+      countryCode: fd.get("countryCode"),
+      phone,
     });
     if (!result.ok) return showError(result.error);
     CupoStore.setSession({ role: "cliente", id: result.client.id });

@@ -5,7 +5,35 @@ const CupoStore = (() => {
     session: "cupo_session",
   };
 
-  const CATEGORIES = ["Barbería", "Salón", "Spa", "Estética"];
+  const AREAS = [
+    {
+      id: "estetica",
+      name: "Estética",
+      icon: "✨",
+      comingSoon: false,
+      categories: ["Barbería", "Salón", "Spa", "Uñas", "Maquillaje", "Estética facial"],
+    },
+    {
+      id: "doctores",
+      name: "Doctores",
+      icon: "🩺",
+      comingSoon: true,
+      categories: [],
+    },
+  ];
+
+  const CATEGORIES = AREAS.find((a) => a.id === "estetica").categories;
+
+  const COUNTRY_CODES = [
+    { code: "+52", label: "México (+52)" },
+    { code: "+1", label: "EE. UU. / Canadá (+1)" },
+    { code: "+34", label: "España (+34)" },
+    { code: "+57", label: "Colombia (+57)" },
+    { code: "+54", label: "Argentina (+54)" },
+    { code: "+51", label: "Perú (+51)" },
+    { code: "+56", label: "Chile (+56)" },
+    { code: "+593", label: "Ecuador (+593)" },
+  ];
 
   function todayAt(hour, minute) {
     const d = new Date();
@@ -66,12 +94,32 @@ const CupoStore = (() => {
       {
         id: "b4",
         name: "Estética Luna",
-        category: "Estética",
+        category: "Estética facial",
         address: "Av. Universidad 300, CDMX",
         email: "luna@cupo.mx",
         password: "1234",
         rating: 4.7,
         slots: seedSlots(13, 4, 200),
+      },
+      {
+        id: "b5",
+        name: "Nails & Co",
+        category: "Uñas",
+        address: "Colonia Roma Norte, CDMX",
+        email: "nails@cupo.mx",
+        password: "1234",
+        rating: 4.9,
+        slots: seedSlots(12, 4, 150),
+      },
+      {
+        id: "b6",
+        name: "Glow Makeup Studio",
+        category: "Maquillaje",
+        address: "Polanco, CDMX",
+        email: "glow@cupo.mx",
+        password: "1234",
+        rating: 4.8,
+        slots: seedSlots(17, 3, 350),
       },
     ];
   }
@@ -121,16 +169,22 @@ const CupoStore = (() => {
     return getClients().find((c) => c.email.toLowerCase() === email.toLowerCase());
   }
 
-  function registerClient({ name, email, password, phone }) {
+  function registerClient({ firstName, lastName, email, password, countryCode, phone }) {
     const clients = getClients();
     if (clients.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
       return { ok: false, error: "Ya existe una cuenta con ese correo." };
     }
+    if (!/^\d{10}$/.test(phone)) {
+      return { ok: false, error: "El teléfono debe tener 10 dígitos." };
+    }
     const client = {
       id: "c" + Math.random().toString(36).slice(2, 9),
-      name,
+      firstName,
+      lastName,
+      name: firstName + " " + lastName,
       email,
       password,
+      countryCode,
       phone,
       reservations: [],
     };
@@ -234,7 +288,9 @@ const CupoStore = (() => {
   }
 
   return {
+    AREAS,
     CATEGORIES,
+    COUNTRY_CODES,
     init,
     getBusinesses,
     saveBusinesses,

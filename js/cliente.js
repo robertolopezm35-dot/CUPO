@@ -20,25 +20,59 @@
     window.location.href = "index.html";
   });
 
+  let activeArea = CupoStore.AREAS.find((a) => !a.comingSoon).id;
   let activeCategory = "Todas";
   let pendingBooking = null;
 
+  const areaTabsEl = document.getElementById("areaTabs");
   const filtersEl = document.getElementById("categoryFilters");
-  CupoStore.CATEGORIES.forEach((cat) => {
-    const btn = document.createElement("button");
-    btn.className = "chip";
-    btn.textContent = cat;
-    btn.dataset.category = cat;
-    filtersEl.appendChild(btn);
-  });
+  const comingSoonPanel = document.getElementById("comingSoonPanel");
+  const businessListEl = document.getElementById("businessList");
 
-  filtersEl.addEventListener("click", (e) => {
-    if (e.target.tagName !== "BUTTON") return;
-    activeCategory = e.target.dataset.category;
-    filtersEl.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
-    e.target.classList.add("active");
-    renderBusinesses();
-  });
+  function renderAreaTabs() {
+    areaTabsEl.innerHTML = CupoStore.AREAS.map((area) => `
+      <button class="area-tab ${area.id === activeArea ? "active" : ""} ${area.comingSoon ? "coming-soon" : ""}" data-area="${area.id}">
+        <span>${area.icon} ${area.name}</span>
+        ${area.comingSoon ? '<span class="soon-badge">Pronto</span>' : ""}
+      </button>
+    `).join("");
+
+    areaTabsEl.querySelectorAll(".area-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeArea = btn.dataset.area;
+        activeCategory = "Todas";
+        renderAreaTabs();
+        renderCategoryChips();
+        renderBusinesses();
+      });
+    });
+  }
+
+  function renderCategoryChips() {
+    const area = CupoStore.AREAS.find((a) => a.id === activeArea);
+    if (!area || area.comingSoon) {
+      filtersEl.hidden = true;
+      businessListEl.hidden = true;
+      comingSoonPanel.hidden = false;
+      return;
+    }
+    filtersEl.hidden = false;
+    businessListEl.hidden = false;
+    comingSoonPanel.hidden = true;
+
+    filtersEl.innerHTML = `<button class="chip ${activeCategory === "Todas" ? "active" : ""}" data-category="Todas">Todas</button>` +
+      area.categories.map((cat) =>
+        `<button class="chip ${activeCategory === cat ? "active" : ""}" data-category="${cat}">${cat}</button>`
+      ).join("");
+
+    filtersEl.querySelectorAll(".chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeCategory = btn.dataset.category;
+        renderCategoryChips();
+        renderBusinesses();
+      });
+    });
+  }
 
   function showToast(msg) {
     const toast = document.getElementById("toast");
@@ -48,8 +82,11 @@
   }
 
   function renderBusinesses() {
-    const list = document.getElementById("businessList");
-    let businesses = CupoStore.getBusinesses();
+    const area = CupoStore.AREAS.find((a) => a.id === activeArea);
+    if (!area || area.comingSoon) return;
+
+    const list = businessListEl;
+    let businesses = CupoStore.getBusinesses().filter((b) => area.categories.includes(b.category));
     if (activeCategory !== "Todas") {
       businesses = businesses.filter((b) => b.category === activeCategory);
     }
@@ -134,6 +171,8 @@
     pendingBooking = null;
   });
 
+  renderAreaTabs();
+  renderCategoryChips();
   renderBusinesses();
   renderReservations();
 })();

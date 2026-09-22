@@ -319,6 +319,25 @@ footer {
   margin-bottom: 16px;
 }
 
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+.field-row .field {
+  flex: 1;
+}
+
+.phone-row {
+  display: flex;
+  gap: 8px;
+}
+.phone-row select {
+  flex: 0 0 150px;
+}
+.phone-row input {
+  flex: 1;
+}
+
 .field label {
   display: block;
   font-size: 13px;
@@ -412,6 +431,9 @@ footer {
   flex-wrap: wrap;
   margin-bottom: 22px;
 }
+.toolbar[hidden] {
+  display: none;
+}
 
 .chip {
   padding: 8px 16px;
@@ -426,6 +448,65 @@ footer {
   background: var(--indigo);
   border-color: var(--indigo);
   color: var(--white);
+}
+
+.area-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.area-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  background: var(--white);
+  border: 1.5px solid var(--gray-light);
+  font-weight: 700;
+  font-size: 14.5px;
+  color: var(--navy);
+  position: relative;
+}
+.area-tab.active {
+  border-color: var(--indigo);
+  background: var(--indigo-light);
+  color: var(--indigo-dark);
+}
+.area-tab.coming-soon {
+  color: var(--gray);
+  cursor: default;
+}
+
+.soon-badge {
+  background: var(--navy);
+  color: var(--white);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.coming-soon-panel {
+  text-align: center;
+  padding: 60px 20px;
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--gray);
+}
+.coming-soon-panel .emoji {
+  font-size: 34px;
+  margin-bottom: 12px;
+}
+.coming-soon-panel h3 {
+  color: var(--navy);
+  margin: 0 0 6px;
+  font-size: 19px;
 }
 
 .stat-row {
