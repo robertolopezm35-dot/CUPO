@@ -1,13 +1,13 @@
-(function () {
-  const session = CupoStore.getSession();
+(async function () {
+  const session = await DataStore.getSession();
   if (!session || session.role !== "cliente") {
     window.location.href = "auth.html?mode=login&role=cliente";
     return;
   }
 
-  const client = CupoStore.getClients().find((c) => c.id === session.id);
+  const client = await DataStore.getClientById(session.id);
   if (!client) {
-    CupoStore.clearSession();
+    await DataStore.clearSession();
     window.location.href = "auth.html?mode=login&role=cliente";
     return;
   }
@@ -15,12 +15,12 @@
   document.getElementById("userName").textContent = client.name;
   document.getElementById("userAvatar").textContent = client.name.charAt(0).toUpperCase();
 
-  document.getElementById("logoutBtn").addEventListener("click", () => {
-    CupoStore.clearSession();
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await DataStore.clearSession();
     window.location.href = "index.html";
   });
 
-  let activeArea = CupoStore.AREAS.find((a) => !a.comingSoon).id;
+  let activeArea = DataStore.AREAS.find((a) => !a.comingSoon).id;
   let activeCategory = "Todas";
   let searchTerm = "";
   let userLocation = null;
@@ -37,7 +37,7 @@
   const confirmText = document.getElementById("confirmText");
 
   function renderAreaTabs() {
-    areaTabsEl.innerHTML = CupoStore.AREAS.map((area) => `
+    areaTabsEl.innerHTML = DataStore.AREAS.map((area) => `
       <button class="area-tab ${area.id === activeArea ? "active" : ""} ${area.comingSoon ? "coming-soon" : ""}" data-area="${area.id}">
         <span>${area.icon} ${area.name}</span>
         ${area.comingSoon ? '<span class="soon-badge">Pronto</span>' : ""}
@@ -45,18 +45,18 @@
     `).join("");
 
     areaTabsEl.querySelectorAll(".area-tab").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         activeArea = btn.dataset.area;
         activeCategory = "Todas";
         renderAreaTabs();
         renderCategoryChips();
-        renderBusinesses();
+        await renderBusinesses();
       });
     });
   }
 
   function renderCategoryChips() {
-    const area = CupoStore.AREAS.find((a) => a.id === activeArea);
+    const area = DataStore.AREAS.find((a) => a.id === activeArea);
     if (!area || area.comingSoon) {
       filtersEl.hidden = true;
       businessListEl.hidden = true;
@@ -73,10 +73,10 @@
       ).join("");
 
     filtersEl.querySelectorAll(".chip").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         activeCategory = btn.dataset.category;
         renderCategoryChips();
-        renderBusinesses();
+        await renderBusinesses();
       });
     });
   }
@@ -95,7 +95,7 @@
   }
 
   function businessPhoto(b) {
-    const v = CupoStore.CATEGORY_VISUALS[b.category] || { emoji: "✨", hue: 243 };
+    const v = DataStore.CATEGORY_VISUALS[b.category] || { emoji: "✨", hue: 243 };
     const h = hashStr(b.id);
     const hue = v.hue + (h % 14) - 7;
     const l1 = 60 - (h % 8);
@@ -121,12 +121,12 @@
     sortNearbyBtn.disabled = true;
     sortNearbyBtn.textContent = "Ubicando...";
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         sortNearbyBtn.disabled = false;
         sortNearbyBtn.textContent = "📍 Ordenado por cercanía";
         showToast("Mostrando los negocios más cercanos primero.");
-        renderBusinesses();
+        await renderBusinesses();
       },
       () => {
         sortNearbyBtn.disabled = false;
@@ -137,17 +137,17 @@
     );
   });
 
-  searchInput.addEventListener("input", () => {
+  searchInput.addEventListener("input", async () => {
     searchTerm = searchInput.value.trim().toLowerCase();
-    renderBusinesses();
+    await renderBusinesses();
   });
 
-  function renderBusinesses() {
-    const area = CupoStore.AREAS.find((a) => a.id === activeArea);
+  async function renderBusinesses() {
+    const area = DataStore.AREAS.find((a) => a.id === activeArea);
     if (!area || area.comingSoon) return;
 
     const list = businessListEl;
-    let businesses = CupoStore.getBusinesses().filter((b) => area.categories.includes(b.category));
+    let businesses = (await DataStore.getBusinesses()).filter((b) => area.categories.includes(b.category));
     if (activeCategory !== "Todas") {
       businesses = businesses.filter((b) => b.category === activeCategory);
     }
@@ -158,7 +158,7 @@
     if (userLocation) {
       businesses = businesses.map((b) => ({
         ...b,
-        distanceKm: CupoStore.distanceKm(userLocation.lat, userLocation.lng, b.lat, b.lng),
+        distanceKm: DataStore.distanceKm(userLocation.lat, userLocation.lng, b.lat, b.lng),
       }));
       businesses.sort((a, b) => a.distanceKm - b.distanceKm);
     }
@@ -202,22 +202,22 @@
     }).join("");
 
     list.querySelectorAll(".slot.available").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", async () => {
         const businessId = el.dataset.business;
         const slotId = el.dataset.slot;
-        const business = CupoStore.getBusinesses().find((b) => b.id === businessId);
+        const business = await DataStore.getBusinessById(businessId);
         const slot = business.slots.find((s) => s.id === slotId);
         openConfirm(
           "Confirmar reserva",
           `${business.name} · ${slot.label} · $${slot.price}. ¿Confirmas tu reserva?`,
-          () => {
-            const result = CupoStore.bookSlot(businessId, slotId, client);
+          async () => {
+            const result = await DataStore.bookSlot(businessId, slotId, client);
             if (!result.ok) {
               showToast(result.error);
             } else {
               showToast("¡Cupo reservado con éxito!");
-              renderBusinesses();
-              renderReservations();
+              await renderBusinesses();
+              await renderReservations();
             }
           }
         );
@@ -225,9 +225,9 @@
     });
   }
 
-  function renderReservations() {
+  async function renderReservations() {
     const el = document.getElementById("reservationsList");
-    const fresh = CupoStore.getClients().find((c) => c.id === session.id);
+    const fresh = await DataStore.getClientById(session.id);
     const reservations = fresh ? fresh.reservations : [];
     if (!reservations.length) {
       el.innerHTML = '<div class="empty-state">Todavía no tienes reservas.</div>';
@@ -240,7 +240,7 @@
         </div>
         <div class="res-price">
           <strong>$${r.price}</strong>
-          <button type="button" class="btn-link-danger" data-business="${r.businessId}" data-slot="${r.slotId}" data-name="${r.businessName}" data-label="${r.label}">Cancelar</button>
+          <button type="button" class="btn-link-danger" data-business="${r.businessId || ""}" data-slot="${r.slotId}" data-reservation="${r.reservationId || ""}" data-name="${r.businessName}" data-label="${r.label}">Cancelar</button>
         </div>
       </div>`
     ).join("") + '</div>';
@@ -249,14 +249,15 @@
       btn.addEventListener("click", () => {
         const businessId = btn.dataset.business;
         const slotId = btn.dataset.slot;
+        const reservationId = btn.dataset.reservation;
         openConfirm(
           "Cancelar reserva",
           `¿Seguro que quieres cancelar tu reserva en ${btn.dataset.name} (${btn.dataset.label})? El cupo se liberará para otros clientes.`,
-          () => {
-            CupoStore.cancelReservation(client.id, businessId, slotId);
+          async () => {
+            await DataStore.cancelReservation(client.id, businessId, slotId, reservationId);
             showToast("Reserva cancelada.");
-            renderBusinesses();
-            renderReservations();
+            await renderBusinesses();
+            await renderReservations();
           }
         );
       });
@@ -268,16 +269,16 @@
     confirmModal.classList.remove("show");
   });
 
-  document.getElementById("confirmBookBtn").addEventListener("click", () => {
+  document.getElementById("confirmBookBtn").addEventListener("click", async () => {
     if (!pendingAction) return;
     const action = pendingAction;
     pendingAction = null;
     confirmModal.classList.remove("show");
-    action();
+    await action();
   });
 
   renderAreaTabs();
   renderCategoryChips();
-  renderBusinesses();
-  renderReservations();
+  await renderBusinesses();
+  await renderReservations();
 })();

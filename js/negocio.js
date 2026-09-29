@@ -1,17 +1,17 @@
-(function () {
-  const session = CupoStore.getSession();
+(async function () {
+  const session = await DataStore.getSession();
   if (!session || session.role !== "negocio") {
     window.location.href = "auth.html?mode=login&role=negocio";
     return;
   }
 
-  function getBusiness() {
-    return CupoStore.getBusinesses().find((b) => b.id === session.id);
+  async function getBusiness() {
+    return DataStore.getBusinessById(session.id);
   }
 
-  let business = getBusiness();
+  let business = await getBusiness();
   if (!business) {
-    CupoStore.clearSession();
+    await DataStore.clearSession();
     window.location.href = "auth.html?mode=login&role=negocio";
     return;
   }
@@ -20,14 +20,14 @@
   document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
   document.getElementById("bizTitle").textContent = business.name;
 
-  document.getElementById("logoutBtn").addEventListener("click", () => {
-    CupoStore.clearSession();
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await DataStore.clearSession();
     window.location.href = "index.html";
   });
 
   const editModal = document.getElementById("editModal");
   const editCategorySelect = document.getElementById("editCategory");
-  CupoStore.CATEGORIES.forEach((cat) => {
+  DataStore.CATEGORIES.forEach((cat) => {
     const opt = document.createElement("option");
     opt.value = cat;
     opt.textContent = cat;
@@ -45,15 +45,15 @@
     editModal.classList.remove("show");
   });
 
-  document.getElementById("saveEditBtn").addEventListener("click", () => {
+  document.getElementById("saveEditBtn").addEventListener("click", async () => {
     const name = document.getElementById("editName").value.trim();
     const category = document.getElementById("editCategory").value;
     const address = document.getElementById("editAddress").value.trim();
     if (!name || !address) return;
-    CupoStore.updateBusiness(business.id, { name, category, address });
+    await DataStore.updateBusiness(business.id, { name, category, address });
     editModal.classList.remove("show");
     showToast("Perfil actualizado.");
-    render();
+    await render();
     document.getElementById("userName").textContent = business.name;
     document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
     document.getElementById("bizTitle").textContent = business.name;
@@ -76,8 +76,8 @@
     setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
-  function render() {
-    business = getBusiness();
+  async function render() {
+    business = await getBusiness();
     const slots = business.slots.slice().sort((a, b) => a.time - b.time);
 
     const available = slots.filter((s) => s.status === "available");
@@ -104,17 +104,17 @@
     }
 
     slotList.querySelectorAll(".slot").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", async () => {
         const slotId = el.dataset.slot;
         const slot = business.slots.find((s) => s.id === slotId);
         if (slot.status === "available") {
-          CupoStore.removeSlot(business.id, slotId);
+          await DataStore.removeSlot(business.id, slotId);
           showToast("Cupo eliminado.");
         } else {
-          CupoStore.reopenSlot(business.id, slotId);
+          await DataStore.reopenSlot(business.id, slotId);
           showToast("Cupo reabierto por cancelación.");
         }
-        render();
+        await render();
       });
     });
 
@@ -131,14 +131,14 @@
     }
   }
 
-  document.getElementById("addSlotBtn").addEventListener("click", () => {
+  document.getElementById("addSlotBtn").addEventListener("click", async () => {
     const hour = hourSelect.value;
     const duration = document.getElementById("newDuration").value;
     const price = document.getElementById("newPrice").value;
-    CupoStore.addSlot(business.id, { hour, minute: 0, duration, price });
+    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price });
     showToast("Cupo publicado.");
-    render();
+    await render();
   });
 
-  render();
+  await render();
 })();

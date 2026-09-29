@@ -12,9 +12,10 @@ Instagram sin saber si hay disponibilidad real.
 
 ## Estado actual
 
-Prototipo estático (HTML/CSS/JS puro, sin backend). Todo el "guardado de datos" vive en
-`localStorage` del navegador — no hay base de datos real todavía. Eso es lo siguiente
-por construir cuando se decida el stack de backend.
+Prototipo estático (HTML/CSS/JS puro). Por defecto todo el "guardado de datos" vive en
+`localStorage` del navegador. Ya está preparado el camino a una base de datos real en
+Supabase (Postgres) — ver "Base de datos: Supabase" abajo — pero se activa solo cuando
+se llenan las credenciales; hasta entonces la app funciona exactamente como antes.
 
 ### Archivos
 
@@ -23,9 +24,51 @@ por construir cuando se decida el stack de backend.
 - `cliente.html` + `js/cliente.js` — panel del cliente: busca y reserva cupos
 - `negocio.html` + `js/negocio.js` — panel del negocio: publica/gestiona su agenda
 - `css/styles.css` — estilos compartidos (paleta índigo del pitch deck)
-- `js/store.js` — toda la "base de datos" (localStorage), datos semilla, y lógica de
-  registro/reservas/áreas/categorías/países. Es el único archivo que habría que
-  reemplazar por llamadas a una API real cuando haya backend.
+- `js/store.js` — `CupoStore`: la "base de datos" en localStorage, datos semilla, y
+  lógica de registro/reservas/áreas/categorías/países. Sigue siendo el modo por defecto.
+- `js/supabase-config.js` — dos strings vacíos (`url`, `anonKey`) para las credenciales
+  del proyecto de Supabase. Mientras estén vacíos, no pasa nada distinto.
+- `js/supabase-store.js` — `SupabaseStore`: el mismo catálogo de funciones que
+  `CupoStore`, pero async y respaldado por Postgres real en vez de localStorage.
+- `js/data-adapter.js` — define `DataStore`, que apunta a `SupabaseStore` si
+  `supabase-config.js` tiene credenciales, o a `CupoStore` si no. `auth.js`,
+  `cliente.js` y `negocio.js` solo hablan con `DataStore`, nunca directo con
+  `CupoStore`/`SupabaseStore` — por eso cambiar de backend no toca esos tres archivos.
+- `db/schema.sql` — el esquema completo de Postgres para Supabase (tablas, RLS,
+  triggers, funciones RPC). Se corre una sola vez en el SQL Editor de Supabase.
+
+## Base de datos: Supabase
+
+Se eligió Supabase sobre otras opciones (Firebase/Firestore, un backend propio) porque
+los datos de CUPO son claramente relacionales (negocio → cupo → reserva → cliente, con
+llaves foráneas reales) y Supabase da Postgres real + autenticación seguro (reemplaza
+las contraseñas en texto plano que localStorage tenía) + "realtime" (para que un cupo
+reservado desaparezca al instante en otras pantallas) + plan gratis, todo sin necesitar
+un servidor propio — encaja con que este proyecto no usa build tools.
+
+**Para activarlo** (ninguno de estos pasos se puede hacer desde aquí — requieren tu
+cuenta):
+1. Crea un proyecto gratis en https://supabase.com
+2. Ve a *Authentication → Providers → Email* y **apaga "Confirm email"** (si no, un
+   registro nuevo no queda logueado de inmediato, distinto a como se comporta hoy).
+3. Ve a *SQL Editor → New query*, pega todo `db/schema.sql` y dale Run.
+4. Copia *Project Settings → API → Project URL* y la *anon public key*, y pégalas en
+   `js/supabase-config.js`.
+5. Listo — la app ya habla con Postgres, sin tocar ningún otro archivo.
+6. Opcional: para tener los mismos 30 negocios de ejemplo de Monterrey en la base real
+   (en vez de empezar vacía), abre la consola del navegador en cualquier página del
+   sitio ya conectado y corre `await SupabaseStore.seedDemoBusinesses()` una sola vez.
+
+**Importante:** esto solo puede funcionar en el sitio real (GitHub Pages / tu propio
+hosting), **no en la demo de Artifact** — el sandbox de Artifacts bloquea cualquier
+llamada de red a servicios externos como Supabase, así que esa demo se queda siempre en
+modo localStorage.
+
+**Sin probar en vivo:** escribí `supabase-store.js` y `schema.sql` siguiendo los
+patrones oficiales del SDK de Supabase, pero no tengo credenciales para probarlos contra
+un proyecto real — lo que sí se probó a fondo (con Playwright) es que el modo
+localStorage sigue funcionando exactamente igual después de este cambio. Prueba el
+flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
 
 ## Decisiones de producto ya tomadas
 
@@ -65,7 +108,11 @@ por construir cuando se decida el stack de backend.
 
 ## Pendiente / decisiones abiertas
 
-- No hay backend ni base de datos real — todo vive en `localStorage`.
+- Supabase está preparado pero no conectado — falta que alguien cree el proyecto y
+  pegue las credenciales (ver "Base de datos: Supabase" arriba). Hasta entonces sigue
+  en `localStorage`.
+- El flujo de Supabase no se ha probado contra un proyecto real todavía — probarlo
+  completo (registro, reserva, cancelación, RLS) en cuanto se conecte.
 - Se consideró un campo de "usuario" (@alias) en el registro de cliente, pero no se
   agregó porque no estaba decidido si sería solo otra forma de iniciar sesión o un
   alias público. El correo sigue siendo el identificador único por ahora.

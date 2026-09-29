@@ -376,6 +376,22 @@ const CupoStore = (() => {
     return getClients().find((c) => c.email.toLowerCase() === email.toLowerCase());
   }
 
+  function getClientById(id) {
+    return getClients().find((c) => c.id === id) || null;
+  }
+
+  function getBusinessById(id) {
+    return getBusinesses().find((b) => b.id === id) || null;
+  }
+
+  function login(role, email, password) {
+    const record = role === "cliente" ? findClientByEmail(email) : findBusinessByEmail(email);
+    if (!record || record.password !== password) {
+      return { ok: false, error: "Correo o contraseña incorrectos." };
+    }
+    return { ok: true, id: record.id };
+  }
+
   function registerClient({ firstName, lastName, email, password, countryCode, phone }) {
     const clients = getClients();
     if (clients.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
@@ -545,6 +561,9 @@ const CupoStore = (() => {
     clearSession,
     findBusinessByEmail,
     findClientByEmail,
+    getClientById,
+    getBusinessById,
+    login,
     registerClient,
     registerBusiness,
     bookSlot,
