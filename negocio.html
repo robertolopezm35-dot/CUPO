@@ -20,7 +20,10 @@
 <main class="dash-main">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
-    <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="ventas.html" class="btn btn-primary btn-sm">📊 Ver ventas</a>
+      <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
+    </div>
   </div>
   <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda.</p>
 
@@ -44,6 +47,10 @@
     <div class="slot-list" id="slotList"></div>
 
     <div class="add-slot-row">
+      <div class="field">
+        <label>Servicio</label>
+        <select id="newService"></select>
+      </div>
       <div class="field">
         <label>Hora</label>
         <select id="newHour"></select>

@@ -33,6 +33,15 @@ const CupoStore = (() => {
     "Estética facial": { emoji: "🧴", hue: 200 },
   };
 
+  const SERVICES_BY_CATEGORY = {
+    "Barbería": ["Corte clásico", "Corte + barba", "Arreglo de barba", "Diseño/fade", "Afeitado tradicional"],
+    "Salón": ["Corte", "Tinte", "Mechas/balayage", "Peinado", "Tratamiento capilar"],
+    "Spa": ["Masaje relajante", "Masaje terapéutico", "Facial", "Circuito spa", "Exfoliación corporal"],
+    "Uñas": ["Manicure", "Pedicure", "Manicure + pedicure", "Uñas acrílicas/gel", "Nail art"],
+    "Maquillaje": ["Maquillaje social", "Maquillaje de novia", "Maquillaje express", "Clase de automaquillaje"],
+    "Estética facial": ["Limpieza facial", "Hidrafacial", "Peeling", "Tratamiento anti-edad", "Consulta estética"],
+  };
+
   function flagEmoji(iso) {
     return iso.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
   }
@@ -255,7 +264,7 @@ const CupoStore = (() => {
     return d.getTime();
   }
 
-  function seedSlots(baseHour, count, price) {
+  function seedSlots(baseHour, count, price, services) {
     const slots = [];
     for (let i = 0; i < count; i++) {
       const h = baseHour + i;
@@ -265,6 +274,7 @@ const CupoStore = (() => {
         label: (h > 12 ? h - 12 : h) + ":00 " + (h >= 12 ? "PM" : "AM"),
         duration: 45,
         price: price,
+        service: services ? services[i % services.length] : null,
         status: "available",
         clientId: null,
         clientName: null,
@@ -273,49 +283,95 @@ const CupoStore = (() => {
     return slots;
   }
 
+  const DEMO_CLIENT_NAMES = [
+    "Ana García", "Luis Hernández", "María Rodríguez", "Carlos Martínez", "Sofía López",
+    "Jorge Pérez", "Daniela Sánchez", "Miguel Torres", "Fernanda Ramírez", "Diego Flores",
+    "Valeria Castro", "Andrés Morales", "Camila Vázquez", "Ricardo Jiménez", "Paola Reyes",
+    "Javier Cruz", "Renata Gómez", "Emilio Ortiz", "Ximena Mendoza", "Pablo Romero",
+  ];
+
+  function randomPastTimestamp(daysBack) {
+    const dayOffset = Math.floor(Math.random() * daysBack);
+    const hour = 9 + Math.floor(Math.random() * 11);
+    const minute = Math.random() < 0.5 ? 0 : 30;
+    const d = new Date(Date.now() - dayOffset * 86400000);
+    d.setHours(hour, minute, 0, 0);
+    return d.getTime();
+  }
+
+  // Genera historial de ventas de demostración (últimos 30 días) para que
+  // el dashboard de Ventas no se vea vacío con los negocios semilla.
+  function seedSales(services, basePrice) {
+    const count = 18 + Math.floor(Math.random() * 20);
+    const sales = [];
+    for (let i = 0; i < count; i++) {
+      const cancelled = Math.random() < 0.08;
+      const jitter = 0.85 + Math.random() * 0.3;
+      sales.push({
+        id: "v" + Math.random().toString(36).slice(2, 9),
+        date: randomPastTimestamp(30),
+        service: services[Math.floor(Math.random() * services.length)],
+        price: Math.round((basePrice * jitter) / 10) * 10,
+        clientName: DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)],
+        slotId: null,
+        status: cancelled ? "cancelada" : "completada",
+      });
+    }
+    sales.sort((a, b) => b.date - a.date);
+    return sales;
+  }
+
+  function bizSeed(category, baseHour, count, price) {
+    const services = SERVICES_BY_CATEGORY[category];
+    return {
+      slots: seedSlots(baseHour, count, price, services),
+      sales: seedSales(services, price),
+    };
+  }
+
   function seedBusinesses() {
     return [
       // Barberías
-      { id: "b1", name: "Bravos Barbería", category: "Barbería", address: "Barrio Antiguo, Monterrey", lat: 25.6693, lng: -100.3099, email: "bravos@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(15, 4, 180) },
-      { id: "b2", name: "Alpha Barberías", category: "Barbería", address: "Col. Contry, Monterrey", lat: 25.6392, lng: -100.2788, email: "alpha@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(14, 4, 190) },
-      { id: "b3", name: "La Barbería Nacional", category: "Barbería", address: "Cumbres, Monterrey", lat: 25.7532, lng: -100.3625, email: "nacional@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(16, 3, 200) },
-      { id: "b4", name: "BarbaNegra", category: "Barbería", address: "Col. Del Valle, San Pedro Garza García", lat: 25.6521, lng: -100.3644, email: "barbanegra@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(13, 4, 170) },
-      { id: "b5", name: "MTM Barber Club", category: "Barbería", address: "Col. Mitras, Monterrey", lat: 25.6889, lng: -100.3517, email: "mtm@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(17, 3, 210) },
+      { id: "b1", name: "Bravos Barbería", category: "Barbería", address: "Barrio Antiguo, Monterrey", lat: 25.6693, lng: -100.3099, email: "bravos@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Barbería", 15, 4, 180) },
+      { id: "b2", name: "Alpha Barberías", category: "Barbería", address: "Col. Contry, Monterrey", lat: 25.6392, lng: -100.2788, email: "alpha@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Barbería", 14, 4, 190) },
+      { id: "b3", name: "La Barbería Nacional", category: "Barbería", address: "Cumbres, Monterrey", lat: 25.7532, lng: -100.3625, email: "nacional@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Barbería", 16, 3, 200) },
+      { id: "b4", name: "BarbaNegra", category: "Barbería", address: "Col. Del Valle, San Pedro Garza García", lat: 25.6521, lng: -100.3644, email: "barbanegra@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Barbería", 13, 4, 170) },
+      { id: "b5", name: "MTM Barber Club", category: "Barbería", address: "Col. Mitras, Monterrey", lat: 25.6889, lng: -100.3517, email: "mtm@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Barbería", 17, 3, 210) },
 
       // Salones
-      { id: "b6", name: "D'Anna Estilistas", category: "Salón", address: "Monterrey", lat: 25.6714, lng: -100.3095, email: "danna@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(14, 3, 300) },
-      { id: "b7", name: "Yuv & Co. Style", category: "Salón", address: "Monterrey", lat: 25.6750, lng: -100.3150, email: "yuv@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 4, 280) },
-      { id: "b8", name: "La Luna Saloon & Boutik", category: "Salón", address: "Monterrey", lat: 25.6680, lng: -100.3050, email: "laluna@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(15, 3, 320) },
-      { id: "b9", name: "El Alessa Beauty Salon", category: "Salón", address: "Monterrey", lat: 25.6620, lng: -100.3200, email: "alessa@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(11, 4, 260) },
-      { id: "b10", name: "Women's Hair Estética Unisex", category: "Salón", address: "Monterrey", lat: 25.6800, lng: -100.3000, email: "womenshair@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(16, 3, 270) },
+      { id: "b6", name: "D'Anna Estilistas", category: "Salón", address: "Monterrey", lat: 25.6714, lng: -100.3095, email: "danna@cupo.mx", password: "1234", rating: 4.5, ...bizSeed("Salón", 14, 3, 300) },
+      { id: "b7", name: "Yuv & Co. Style", category: "Salón", address: "Monterrey", lat: 25.6750, lng: -100.3150, email: "yuv@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Salón", 12, 4, 280) },
+      { id: "b8", name: "La Luna Saloon & Boutik", category: "Salón", address: "Monterrey", lat: 25.6680, lng: -100.3050, email: "laluna@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Salón", 15, 3, 320) },
+      { id: "b9", name: "El Alessa Beauty Salon", category: "Salón", address: "Monterrey", lat: 25.6620, lng: -100.3200, email: "alessa@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Salón", 11, 4, 260) },
+      { id: "b10", name: "Women's Hair Estética Unisex", category: "Salón", address: "Monterrey", lat: 25.6800, lng: -100.3000, email: "womenshair@cupo.mx", password: "1234", rating: 4.5, ...bizSeed("Salón", 16, 3, 270) },
 
       // Spas
-      { id: "b11", name: "Mantra Mind & Body Spa", category: "Spa", address: "Río Moctezuma 303, Col. Del Valle, San Pedro Garza García", lat: 25.6500, lng: -100.3650, email: "mantra@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(10, 3, 1250) },
-      { id: "b12", name: "Azuleno Spa", category: "Spa", address: "Río Amazonas 60 Ote, San Pedro Garza García", lat: 25.6550, lng: -100.3700, email: "azuleno@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(11, 3, 1100) },
-      { id: "b13", name: "Facial Co Spa", category: "Spa", address: "Av. Lázaro Cárdenas 2510, Local 12A, San Pedro Garza García", lat: 25.6430, lng: -100.3780, email: "facialco@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(9, 4, 950) },
-      { id: "b14", name: "O. Spa Salón (O. Sierra Madre)", category: "Spa", address: "Av. Manuel Gómez Morín 1105, San Pedro Garza García", lat: 25.6330, lng: -100.3650, email: "osierramadre@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 3, 1050) },
-      { id: "b15", name: "Thann Sanctuary", category: "Spa", address: "San Pedro Garza García", lat: 25.6506, lng: -100.4022, email: "thann@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(13, 3, 1300) },
+      { id: "b11", name: "Mantra Mind & Body Spa", category: "Spa", address: "Río Moctezuma 303, Col. Del Valle, San Pedro Garza García", lat: 25.6500, lng: -100.3650, email: "mantra@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Spa", 10, 3, 1250) },
+      { id: "b12", name: "Azuleno Spa", category: "Spa", address: "Río Amazonas 60 Ote, San Pedro Garza García", lat: 25.6550, lng: -100.3700, email: "azuleno@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Spa", 11, 3, 1100) },
+      { id: "b13", name: "Facial Co Spa", category: "Spa", address: "Av. Lázaro Cárdenas 2510, Local 12A, San Pedro Garza García", lat: 25.6430, lng: -100.3780, email: "facialco@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Spa", 9, 4, 950) },
+      { id: "b14", name: "O. Spa Salón (O. Sierra Madre)", category: "Spa", address: "Av. Manuel Gómez Morín 1105, San Pedro Garza García", lat: 25.6330, lng: -100.3650, email: "osierramadre@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Spa", 12, 3, 1050) },
+      { id: "b15", name: "Thann Sanctuary", category: "Spa", address: "San Pedro Garza García", lat: 25.6506, lng: -100.4022, email: "thann@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Spa", 13, 3, 1300) },
 
       // Uñas
-      { id: "b16", name: "HG Nails", category: "Uñas", address: "Roque González Garza 140, San Pedro Garza García", lat: 25.6480, lng: -100.3800, email: "hgnails@cupo.mx", password: "1234", rating: 4.9, slots: seedSlots(11, 4, 280) },
-      { id: "b17", name: "Only Nails Del Valle", category: "Uñas", address: "Río Missouri 555, Col. Del Valle, San Pedro Garza García", lat: 25.6470, lng: -100.3660, email: "onlynailsdelvalle@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(10, 4, 260) },
-      { id: "b18", name: "Only Nails San Agustín", category: "Uñas", address: "Av. Real San Agustín, San Pedro Garza García", lat: 25.6480, lng: -100.3550, email: "onlynailssa@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(14, 4, 250) },
-      { id: "b19", name: "The New Black Beauty Lab", category: "Uñas", address: "Barrio Antiguo, Monterrey", lat: 25.6700, lng: -100.3110, email: "newblack@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(12, 3, 300) },
-      { id: "b20", name: "Only Nails Cumbres", category: "Uñas", address: "Paseo de los Leones 3433, Cumbres, Monterrey", lat: 25.7280, lng: -100.3550, email: "onlynailscumbres@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(15, 3, 255) },
+      { id: "b16", name: "HG Nails", category: "Uñas", address: "Roque González Garza 140, San Pedro Garza García", lat: 25.6480, lng: -100.3800, email: "hgnails@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Uñas", 11, 4, 280) },
+      { id: "b17", name: "Only Nails Del Valle", category: "Uñas", address: "Río Missouri 555, Col. Del Valle, San Pedro Garza García", lat: 25.6470, lng: -100.3660, email: "onlynailsdelvalle@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Uñas", 10, 4, 260) },
+      { id: "b18", name: "Only Nails San Agustín", category: "Uñas", address: "Av. Real San Agustín, San Pedro Garza García", lat: 25.6480, lng: -100.3550, email: "onlynailssa@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Uñas", 14, 4, 250) },
+      { id: "b19", name: "The New Black Beauty Lab", category: "Uñas", address: "Barrio Antiguo, Monterrey", lat: 25.6700, lng: -100.3110, email: "newblack@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Uñas", 12, 3, 300) },
+      { id: "b20", name: "Only Nails Cumbres", category: "Uñas", address: "Paseo de los Leones 3433, Cumbres, Monterrey", lat: 25.7280, lng: -100.3550, email: "onlynailscumbres@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Uñas", 15, 3, 255) },
 
       // Maquillaje
-      { id: "b21", name: "Be Glamour Studio", category: "Maquillaje", address: "Monterrey", lat: 25.6690, lng: -100.3180, email: "beglamour@cupo.mx", password: "1234", rating: 4.0, slots: seedSlots(10, 3, 600) },
-      { id: "b22", name: "Glo Makeup Studio Mty", category: "Maquillaje", address: "Monterrey", lat: 25.6730, lng: -100.3120, email: "glomakeup@cupo.mx", password: "1234", rating: 4.5, slots: seedSlots(16, 3, 650) },
-      { id: "b23", name: "Fernanda Montelongo Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6650, lng: -100.3250, email: "fernandamtg@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(11, 3, 700) },
-      { id: "b24", name: "Artemis Vázquez Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6600, lng: -100.3300, email: "artemisv@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(9, 3, 680) },
-      { id: "b25", name: "A'M Hair & Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6780, lng: -100.3050, email: "amhair@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(14, 3, 720) },
+      { id: "b21", name: "Be Glamour Studio", category: "Maquillaje", address: "Monterrey", lat: 25.6690, lng: -100.3180, email: "beglamour@cupo.mx", password: "1234", rating: 4.0, ...bizSeed("Maquillaje", 10, 3, 600) },
+      { id: "b22", name: "Glo Makeup Studio Mty", category: "Maquillaje", address: "Monterrey", lat: 25.6730, lng: -100.3120, email: "glomakeup@cupo.mx", password: "1234", rating: 4.5, ...bizSeed("Maquillaje", 16, 3, 650) },
+      { id: "b23", name: "Fernanda Montelongo Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6650, lng: -100.3250, email: "fernandamtg@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Maquillaje", 11, 3, 700) },
+      { id: "b24", name: "Artemis Vázquez Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6600, lng: -100.3300, email: "artemisv@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Maquillaje", 9, 3, 680) },
+      { id: "b25", name: "A'M Hair & Makeup Artist", category: "Maquillaje", address: "Monterrey", lat: 25.6780, lng: -100.3050, email: "amhair@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Maquillaje", 14, 3, 720) },
 
       // Estética facial
-      { id: "b26", name: "Skinklinik Med Spa", category: "Estética facial", address: "Terranova 329, Col. Vista Hermosa, Monterrey", lat: 25.6725, lng: -100.3448, email: "skinklinik@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(10, 3, 900) },
-      { id: "b27", name: "Nubody", category: "Estética facial", address: "Monterrey", lat: 25.6600, lng: -100.3600, email: "nubody@cupo.mx", password: "1234", rating: 4.6, slots: seedSlots(12, 3, 1100) },
-      { id: "b28", name: "Dra. Gina González Beyou", category: "Estética facial", address: "Monterrey", lat: 25.6550, lng: -100.3550, email: "drginagonzalez@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(9, 3, 1200) },
-      { id: "b29", name: "Dra. Sindy Sánchez", category: "Estética facial", address: "Plaza Mirador, Guadalupe", lat: 25.6773, lng: -100.2597, email: "drasindysanchez@cupo.mx", password: "1234", rating: 4.7, slots: seedSlots(13, 3, 1150) },
-      { id: "b30", name: "JOSSCLAUDE & BeLLVeR", category: "Estética facial", address: "Monterrey", lat: 25.6700, lng: -100.3200, email: "jossclaude@cupo.mx", password: "1234", rating: 4.8, slots: seedSlots(15, 3, 850) },
+      { id: "b26", name: "Skinklinik Med Spa", category: "Estética facial", address: "Terranova 329, Col. Vista Hermosa, Monterrey", lat: 25.6725, lng: -100.3448, email: "skinklinik@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Estética facial", 10, 3, 900) },
+      { id: "b27", name: "Nubody", category: "Estética facial", address: "Monterrey", lat: 25.6600, lng: -100.3600, email: "nubody@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Estética facial", 12, 3, 1100) },
+      { id: "b28", name: "Dra. Gina González Beyou", category: "Estética facial", address: "Monterrey", lat: 25.6550, lng: -100.3550, email: "drginagonzalez@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 9, 3, 1200) },
+      { id: "b29", name: "Dra. Sindy Sánchez", category: "Estética facial", address: "Plaza Mirador, Guadalupe", lat: 25.6773, lng: -100.2597, email: "drasindysanchez@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Estética facial", 13, 3, 1150) },
+      { id: "b30", name: "JOSSCLAUDE & BeLLVeR", category: "Estética facial", address: "Monterrey", lat: 25.6700, lng: -100.3200, email: "jossclaude@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 15, 3, 850) },
     ];
   }
 
@@ -432,6 +488,7 @@ const CupoStore = (() => {
       password,
       rating: 5.0,
       slots: [],
+      sales: [],
     };
     businesses.push(business);
     saveBusinesses(businesses);
@@ -449,6 +506,16 @@ const CupoStore = (() => {
     slot.status = "booked";
     slot.clientId = client.id;
     slot.clientName = client.name;
+    if (!Array.isArray(business.sales)) business.sales = [];
+    business.sales.push({
+      id: "v" + Math.random().toString(36).slice(2, 9),
+      date: Date.now(),
+      service: slot.service || null,
+      price: slot.price,
+      clientName: client.name,
+      slotId,
+      status: "completada",
+    });
     saveBusinesses(businesses);
 
     const clients = getClients();
@@ -466,7 +533,7 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
-  function addSlot(businessId, { hour, minute, duration, price }) {
+  function addSlot(businessId, { hour, minute, duration, price, service }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false };
@@ -481,6 +548,7 @@ const CupoStore = (() => {
       label,
       duration: parseInt(duration, 10) || 45,
       price: parseInt(price, 10) || 0,
+      service: service || null,
       status: "available",
       clientId: null,
       clientName: null,
@@ -522,6 +590,10 @@ const CupoStore = (() => {
         slot.clientId = null;
         slot.clientName = null;
       }
+      const sale = (business.sales || [])
+        .filter((v) => v.slotId === slotId && v.status === "completada")
+        .sort((a, b) => b.date - a.date)[0];
+      if (sale) sale.status = "cancelada";
       saveBusinesses(businesses);
     }
 
@@ -545,10 +617,17 @@ const CupoStore = (() => {
     return { ok: true, business };
   }
 
+  function getSales(businessId) {
+    const business = getBusinessById(businessId);
+    if (!business) return [];
+    return (business.sales || []).slice().sort((a, b) => b.date - a.date);
+  }
+
   return {
     AREAS,
     CATEGORIES,
     CATEGORY_VISUALS,
+    SERVICES_BY_CATEGORY,
     COUNTRY_CODES,
     MTY_CENTER,
     distanceKm,
@@ -572,6 +651,7 @@ const CupoStore = (() => {
     removeSlot,
     cancelReservation,
     updateBusiness,
+    getSales,
   };
 })();
 

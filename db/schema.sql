@@ -50,6 +50,7 @@ create table public.slots (
   starts_at timestamptz not null,
   duration_minutes int not null default 45,
   price numeric(10, 2) not null,
+  service text,
   status text not null default 'available' check (status in ('available', 'booked')),
   created_at timestamptz not null default now()
 );
@@ -66,6 +67,24 @@ create table public.reservations (
 );
 
 create index reservations_client_id_idx on public.reservations (client_id);
+
+-- ── Ventas: historial de cupos reservados, para el dashboard del negocio ──
+-- No se borra cuando se cancela un cupo (a diferencia de reservations) —
+-- se marca status = 'cancelada' para que el negocio pueda ver su historial
+-- completo y sus tasas de cancelación, igual que en localStorage.
+create table public.sales (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses (id) on delete cascade,
+  slot_id uuid references public.slots (id) on delete set null,
+  service text,
+  price numeric(10, 2) not null,
+  client_name text,
+  status text not null default 'completada' check (status in ('completada', 'cancelada')),
+  created_at timestamptz not null default now()
+);
+
+create index sales_business_id_idx on public.sales (business_id);
+create index sales_slot_id_idx on public.sales (slot_id);
 
 -- ── Trigger: al registrarse un usuario, crear su perfil + fila específica ─
 -- signUp() manda first_name/last_name/... (cliente) o name/category/...
@@ -119,6 +138,7 @@ alter table public.clients enable row level security;
 alter table public.businesses enable row level security;
 alter table public.slots enable row level security;
 alter table public.reservations enable row level security;
+alter table public.sales enable row level security;
 
 create policy "Cada quien ve su propio perfil"
   on public.profiles for select
@@ -148,6 +168,9 @@ create policy "El cliente ve sus reservas, el negocio ve quién le reservó"
     or auth.uid() = (select business_id from public.slots where id = slot_id)
   );
 
+create policy "El negocio ve solo sus propias ventas"
+  on public.sales for select using (auth.uid() = business_id);
+
 -- ── Funciones RPC: operaciones que deben ser atómicas ─────────────────────
 -- Reservar/cancelar involucra tocar dos tablas (slots + reservations) a la
 -- vez; hacerlo como función evita que dos clientes reserven el mismo cupo
@@ -162,14 +185,20 @@ set search_path = public
 as $$
 declare
   v_reservation public.reservations;
+  v_client_name text;
+  v_slot public.slots;
 begin
-  if not exists (select 1 from public.clients where id = auth.uid()) then
+  select first_name || ' ' || last_name into v_client_name
+  from public.clients where id = auth.uid();
+
+  if v_client_name is null then
     raise exception 'Solo un cliente puede reservar un cupo.';
   end if;
 
   update public.slots
   set status = 'booked'
-  where id = p_slot_id and status = 'available';
+  where id = p_slot_id and status = 'available'
+  returning * into v_slot;
 
   if not found then
     raise exception 'Ese cupo ya no está disponible.';
@@ -178,6 +207,9 @@ begin
   insert into public.reservations (slot_id, client_id)
   values (p_slot_id, auth.uid())
   returning * into v_reservation;
+
+  insert into public.sales (business_id, slot_id, service, price, client_name, status)
+  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_client_name, 'completada');
 
   return v_reservation;
 end;
@@ -202,6 +234,13 @@ begin
 
   delete from public.reservations where id = p_reservation_id;
   update public.slots set status = 'available' where id = v_slot_id;
+
+  update public.sales set status = 'cancelada'
+  where id = (
+    select id from public.sales
+    where slot_id = v_slot_id and status = 'completada'
+    order by created_at desc limit 1
+  );
 end;
 $$;
 
@@ -218,6 +257,13 @@ begin
 
   delete from public.reservations where slot_id = p_slot_id;
   update public.slots set status = 'available' where id = p_slot_id;
+
+  update public.sales set status = 'cancelada'
+  where id = (
+    select id from public.sales
+    where slot_id = p_slot_id and status = 'completada'
+    order by created_at desc limit 1
+  );
 end;
 $$;
 

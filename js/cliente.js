@@ -174,6 +174,7 @@
             const cls = s.status === "available" ? "available" : "booked";
             return `<div class="slot ${cls}" data-business="${b.id}" data-slot="${s.id}">
               <span class="time">${s.label}</span>
+              ${s.service ? `<span class="price">${s.service}</span>` : ""}
               <span class="price">$${s.price}${s.status === "booked" ? " · ocupado" : ""}</span>
             </div>`;
           }).join("")
@@ -209,7 +210,7 @@
         const slot = business.slots.find((s) => s.id === slotId);
         openConfirm(
           "Confirmar reserva",
-          `${business.name} · ${slot.label} · $${slot.price}. ¿Confirmas tu reserva?`,
+          `${business.name} · ${slot.service ? slot.service + " · " : ""}${slot.label} · $${slot.price}. ¿Confirmas tu reserva?`,
           async () => {
             const result = await DataStore.bookSlot(businessId, slotId, client);
             if (!result.ok) {

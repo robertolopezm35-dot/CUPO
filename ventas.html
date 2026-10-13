@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO — Ventas</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="dash-header">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <div class="dash-user">
+    <span id="userName"></span>
+    <div class="avatar" id="userAvatar"></div>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">Salir</button>
+  </div>
+</header>
+
+<main class="dash-main">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <h1 class="dash-title">Ventas</h1>
+    <a href="negocio.html" class="btn btn-outline btn-sm">← Mi agenda</a>
+  </div>
+  <p class="dash-sub">Qué está vendiendo tu negocio, en tiempo real.</p>
+
+  <div class="period-tabs" id="periodTabs">
+    <button data-period="today" class="active">Hoy</button>
+    <button data-period="7">7 días</button>
+    <button data-period="30">30 días</button>
+    <button data-period="all">Todo</button>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="num" id="statTotal">$0</div>
+      <div class="lbl">Total de ventas</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" id="statTicket">$0</div>
+      <div class="lbl">Ticket promedio</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" id="statCount">0</div>
+      <div class="lbl">Clientes atendidos</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Ingresos por día</h3>
+    <div id="dayChart"></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Facturación por franja horaria</h3>
+    <p class="chart-sub">En qué horas del día vendes más</p>
+    <div id="hourChart"></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Servicios más vendidos</h3>
+    <div id="serviceRank"></div>
+  </div>
+
+  <div style="margin-top:32px">
+    <h2 class="section-title" style="font-size:22px;text-align:left">Historial de ventas</h2>
+    <div id="salesList"></div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/store.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/supabase-store.js"></script>
+<script src="js/data-adapter.js"></script>
+<script src="js/ventas.js"></script>
+</body>
+</html>

@@ -35,10 +35,23 @@ const SupabaseStore = (() => {
       label: labelFor(date),
       duration: row.duration_minutes,
       price: Number(row.price),
+      service: row.service || null,
       status: row.status,
       reservationId: reservation ? reservation.id : null,
       clientId: reservation ? reservation.client_id : null,
       clientName: client ? client.first_name + " " + client.last_name : null,
+    };
+  }
+
+  function mapSale(row) {
+    return {
+      id: row.id,
+      date: new Date(row.created_at).getTime(),
+      service: row.service,
+      price: Number(row.price),
+      clientName: row.client_name,
+      slotId: row.slot_id,
+      status: row.status,
     };
   }
 
@@ -176,7 +189,7 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
-  async function addSlot(businessId, { hour, minute, duration, price }) {
+  async function addSlot(businessId, { hour, minute, duration, price, service }) {
     const startsAt = new Date();
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
     const { error } = await client.from("slots").insert({
@@ -184,9 +197,20 @@ const SupabaseStore = (() => {
       starts_at: startsAt.toISOString(),
       duration_minutes: parseInt(duration, 10) || 45,
       price: parseInt(price, 10) || 0,
+      service: service || null,
     });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
+  }
+
+  async function getSales(businessId) {
+    const { data, error } = await client
+      .from("sales")
+      .select("*")
+      .eq("business_id", businessId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapSale);
   }
 
   async function reopenSlot(businessId, slotId) {
@@ -217,6 +241,10 @@ const SupabaseStore = (() => {
   // el prototipo usa en localStorage. Solo hace falta correrlo una vez,
   // a mano, desde la consola del navegador (no se llama solo):
   //   await SupabaseStore.seedDemoBusinesses()
+  // Nota: copia los cupos de hoy tal cual (incluido su servicio), pero NO
+  // replica el historial de ventas de demostración de los últimos 30 días
+  // que sí trae localStorage — el dashboard de Ventas arranca vacío hasta
+  // que entren reservas reales.
   async function seedDemoBusinesses() {
     if (!client) throw new Error("Configura js/supabase-config.js primero.");
     const seed = CupoStore.getBusinesses(); // localStorage ya trae los 30 de ejemplo
@@ -238,6 +266,7 @@ const SupabaseStore = (() => {
             minute: new Date(s.time).getMinutes(),
             duration: s.duration,
             price: s.price,
+            service: s.service,
           });
         }
         await client.auth.signOut();
@@ -250,6 +279,7 @@ const SupabaseStore = (() => {
     AREAS: CupoStore.AREAS,
     CATEGORIES: CupoStore.CATEGORIES,
     CATEGORY_VISUALS: CupoStore.CATEGORY_VISUALS,
+    SERVICES_BY_CATEGORY: CupoStore.SERVICES_BY_CATEGORY,
     COUNTRY_CODES: CupoStore.COUNTRY_CODES,
     MTY_CENTER: CupoStore.MTY_CENTER,
     distanceKm: CupoStore.distanceKm,
@@ -270,6 +300,7 @@ const SupabaseStore = (() => {
     removeSlot,
     cancelReservation,
     updateBusiness,
+    getSales,
     seedDemoBusinesses,
   };
 })();

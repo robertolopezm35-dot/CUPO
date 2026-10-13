@@ -23,9 +23,12 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
 - `auth.html` + `js/auth.js` — login/registro con selector de rol **Cliente / Negocio**
 - `cliente.html` + `js/cliente.js` — panel del cliente: busca y reserva cupos
 - `negocio.html` + `js/negocio.js` — panel del negocio: publica/gestiona su agenda
+- `ventas.html` + `js/ventas.js` — dashboard de ventas del negocio (tipo Bewe): qué se
+  está vendiendo, visible solo para el negocio dueño de la sesión.
 - `css/styles.css` — estilos compartidos (paleta índigo del pitch deck)
 - `js/store.js` — `CupoStore`: la "base de datos" en localStorage, datos semilla, y
-  lógica de registro/reservas/áreas/categorías/países. Sigue siendo el modo por defecto.
+  lógica de registro/reservas/áreas/categorías/países/servicios/ventas. Sigue siendo
+  el modo por defecto.
 - `js/supabase-config.js` — dos strings vacíos (`url`, `anonKey`) para las credenciales
   del proyecto de Supabase. Mientras estén vacíos, no pasa nada distinto.
 - `js/supabase-store.js` — `SupabaseStore`: el mismo catálogo de funciones que
@@ -96,6 +99,20 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
   por distancia real usando `navigator.geolocation` del navegador contra coordenadas
   aproximadas por colonia asignadas a cada negocio (no geocodificación exacta). El
   negocio puede editar nombre/categoría/dirección desde su panel.
+- **Dashboard de Ventas (`ventas.html`), inspirado en Bewe:** cada cupo ahora tiene un
+  campo `service` (lista de servicios predefinida por categoría — ej. Barbería: "Corte
+  clásico", "Corte + barba"...; ver `SERVICES_BY_CATEGORY` en `js/store.js`). Cada
+  reserva genera una fila en un historial de ventas permanente por negocio (`sales`:
+  servicio, precio, cliente, fecha, estado `completada`/`cancelada` — no se borra al
+  cancelar, solo cambia de estado). El dashboard (visible solo para el negocio dueño de
+  la sesión) muestra: filtro por período (Hoy/7 días/30 días/Todo), total de ventas,
+  ticket promedio, clientes atendidos, ingresos por día (o por semana si el rango es
+  largo), **facturación por franja horaria** y **servicios más vendidos** — las tres
+  métricas que Bewe realmente expone en sus reportes según su propio blog/documentación
+  pública (investigado por web search, no inventado). Para que el dashboard no se vea
+  vacío, los 30 negocios semilla traen ~20-35 ventas de demostración de los últimos 30
+  días generadas por código (`seedSales` en `js/store.js`) — nombres de clientes
+  genéricos, igual de "demo" que los logins `nombre@cupo.mx` / `1234`.
 
 ## Enlaces
 
@@ -112,7 +129,14 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
   pegue las credenciales (ver "Base de datos: Supabase" arriba). Hasta entonces sigue
   en `localStorage`.
 - El flujo de Supabase no se ha probado contra un proyecto real todavía — probarlo
-  completo (registro, reserva, cancelación, RLS) en cuanto se conecte.
+  completo (registro, reserva, cancelación, RLS) en cuanto se conecte. Esto incluye la
+  tabla `sales` nueva y sus políticas RLS (ver "Dashboard de Ventas" arriba) — sí se
+  probó a fondo en modo localStorage con Playwright (seed, reserva en vivo, cancelación,
+  los tres filtros de período), pero no contra Postgres real.
+- `SupabaseStore.seedDemoBusinesses()` copia los cupos de hoy de los 30 negocios de
+  ejemplo (incluido su servicio), pero no replica su historial de ventas de
+  demostración — en Supabase el dashboard de Ventas arranca vacío hasta que entren
+  reservas reales.
 - Se consideró un campo de "usuario" (@alias) en el registro de cliente, pero no se
   agregó porque no estaba decidido si sería solo otra forma de iniciar sesión o un
   alias público. El correo sigue siendo el identificador único por ahora.

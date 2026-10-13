@@ -69,6 +69,14 @@
     hourSelect.appendChild(opt);
   }
 
+  const serviceSelect = document.getElementById("newService");
+  (DataStore.SERVICES_BY_CATEGORY[business.category] || []).forEach((svc) => {
+    const opt = document.createElement("option");
+    opt.value = svc;
+    opt.textContent = svc;
+    serviceSelect.appendChild(opt);
+  });
+
   function showToast(msg) {
     const toast = document.getElementById("toast");
     toast.textContent = msg;
@@ -97,6 +105,7 @@
         const sub = s.status === "available" ? "Disponible" : (s.clientName || "Reservado");
         return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ${s.status === 'available' ? 'quitar' : 'reabrir (cancelación)'}">
           <span class="time">${s.label}</span>
+          ${s.service ? `<span class="price">${s.service}</span>` : ""}
           <span class="price">$${s.price}</span>
           <span class="price">${sub}</span>
         </div>`;
@@ -124,7 +133,7 @@
     } else {
       bookingsList.innerHTML = '<div class="biz-card">' + booked.map((s) =>
         `<div class="reservation-row">
-          <span>${s.clientName} · ${s.label}</span>
+          <span>${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}</span>
           <strong>$${s.price}</strong>
         </div>`
       ).join("") + '</div>';
@@ -135,7 +144,8 @@
     const hour = hourSelect.value;
     const duration = document.getElementById("newDuration").value;
     const price = document.getElementById("newPrice").value;
-    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price });
+    const service = serviceSelect.value;
+    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service });
     showToast("Cupo publicado.");
     await render();
   });
