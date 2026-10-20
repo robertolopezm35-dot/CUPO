@@ -18,7 +18,7 @@
 </header>
 
 <main class="dash-main">
-  <h1 class="dash-title">Cupos disponibles hoy</h1>
+  <h1 class="dash-title" id="dashTitle">Cupos disponibles hoy</h1>
   <p class="dash-sub">Reserva al instante, sin esperar respuesta.</p>
 
   <div class="area-tabs" id="areaTabs"></div>
@@ -61,9 +61,14 @@
 
 <div class="modal-overlay" id="confirmModal">
   <div class="modal">
-    <h3 id="confirmTitle">Confirmar reserva</h3>
-    <p id="confirmText"></p>
-    <p id="confirmPolicy" class="policy-note" hidden>Puedes cancelar sin costo hasta 1 hora antes de tu cita. Pagas directamente en el negocio.</p>
+    <div class="modal-header">
+      <h3 id="confirmTitle">Confirmar reserva</h3>
+      <button type="button" class="modal-close" id="closeConfirmBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmText"></p>
+      <p id="confirmPolicy" class="policy-note" hidden>Puedes cancelar sin costo hasta 1 hora antes de tu cita. Pagas directamente en el negocio.</p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cancelBookBtn">Regresar</button>
       <button class="btn btn-primary btn-block" id="confirmBookBtn">Reservar</button>
@@ -73,8 +78,13 @@
 
 <div class="modal-overlay" id="folioModal">
   <div class="modal">
-    <h3>¡Reserva confirmada! 🎉</h3>
-    <p id="folioText"></p>
+    <div class="modal-header">
+      <h3>¡Reserva confirmada! 🎉</h3>
+      <button type="button" class="modal-close" id="closeFolioBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="folioText"></p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-primary btn-block" id="folioOkBtn">Entendido</button>
     </div>
@@ -83,18 +93,23 @@
 
 <div class="modal-overlay" id="reviewModal">
   <div class="modal">
-    <h3>Dejar reseña</h3>
-    <p id="reviewBusinessName" class="policy-note"></p>
-    <div class="star-picker" id="starPicker">
-      <button type="button" data-star="1">★</button>
-      <button type="button" data-star="2">★</button>
-      <button type="button" data-star="3">★</button>
-      <button type="button" data-star="4">★</button>
-      <button type="button" data-star="5">★</button>
+    <div class="modal-header">
+      <h3>Dejar reseña</h3>
+      <button type="button" class="modal-close" id="closeReviewBtn" aria-label="Cerrar">✕</button>
     </div>
-    <div class="field">
-      <label>Comentario (opcional)</label>
-      <textarea id="reviewComment" rows="3" placeholder="¿Cómo te fue?"></textarea>
+    <div class="modal-body">
+      <p id="reviewBusinessName" class="policy-note"></p>
+      <div class="star-picker" id="starPicker">
+        <button type="button" data-star="1">★</button>
+        <button type="button" data-star="2">★</button>
+        <button type="button" data-star="3">★</button>
+        <button type="button" data-star="4">★</button>
+        <button type="button" data-star="5">★</button>
+      </div>
+      <div class="field">
+        <label>Comentario (opcional)</label>
+        <textarea id="reviewComment" rows="3" placeholder="¿Cómo te fue?"></textarea>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cancelReviewBtn">Cancelar</button>

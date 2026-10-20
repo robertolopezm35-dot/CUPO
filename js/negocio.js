@@ -80,11 +80,16 @@
     editModal.classList.add("show");
   });
 
-  document.getElementById("cancelEditBtn").addEventListener("click", () => {
+  function closeEditModal() {
     editModal.classList.remove("show");
-  });
+  }
+  document.getElementById("cancelEditBtn").addEventListener("click", closeEditModal);
+  document.getElementById("closeEditBtn").addEventListener("click", closeEditModal);
+  editModal.addEventListener("click", (e) => { if (e.target === editModal) closeEditModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEditModal(); });
 
-  document.getElementById("saveEditBtn").addEventListener("click", async () => {
+  const saveEditBtn = document.getElementById("saveEditBtn");
+  saveEditBtn.addEventListener("click", async () => {
     const name = document.getElementById("editName").value.trim();
     const category = document.getElementById("editCategory").value;
     const address = document.getElementById("editAddress").value.trim();
@@ -103,14 +108,17 @@
       name: row.querySelector(".staff-name").value.trim(),
     })).filter((s) => s.name);
 
+    saveEditBtn.disabled = true;
     const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
+    saveEditBtn.disabled = false;
     if (result && result.ok === false) {
       showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
       return;
     }
-    editModal.classList.remove("show");
+    closeEditModal();
     showToast("Perfil actualizado.");
     await render();
+    renderServiceOptions();
     document.getElementById("userName").textContent = business.name;
     document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
     document.getElementById("bizTitle").textContent = business.name;
@@ -127,12 +135,18 @@
   }
 
   const serviceSelect = document.getElementById("newService");
-  (DataStore.SERVICES_BY_CATEGORY[business.category] || []).forEach((svc) => {
-    const opt = document.createElement("option");
-    opt.value = svc;
-    opt.textContent = svc;
-    serviceSelect.appendChild(opt);
-  });
+  function renderServiceOptions() {
+    const current = serviceSelect.value;
+    serviceSelect.innerHTML = "";
+    (DataStore.SERVICES_BY_CATEGORY[business.category] || []).forEach((svc) => {
+      const opt = document.createElement("option");
+      opt.value = svc;
+      opt.textContent = svc;
+      serviceSelect.appendChild(opt);
+    });
+    if ([...serviceSelect.options].some((o) => o.value === current)) serviceSelect.value = current;
+  }
+  renderServiceOptions();
 
   const dayOffsetSelect = document.getElementById("newDayOffset");
   for (let i = 0; i <= 6; i++) {
@@ -229,7 +243,8 @@
     }
   }
 
-  document.getElementById("addSlotBtn").addEventListener("click", async () => {
+  const addSlotBtn = document.getElementById("addSlotBtn");
+  addSlotBtn.addEventListener("click", async () => {
     const hour = hourSelect.value;
     const duration = document.getElementById("newDuration").value;
     const price = document.getElementById("newPrice").value;
@@ -237,7 +252,9 @@
     const dayOffset = dayOffsetSelect.value;
     const discountPct = document.getElementById("newDiscount").value;
     const staffId = document.getElementById("newStaff").value;
+    addSlotBtn.disabled = true;
     await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service, dayOffset, discountPct, staffId });
+    addSlotBtn.disabled = false;
     showToast("Cupo publicado.");
     await render();
   });

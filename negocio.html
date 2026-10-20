@@ -86,33 +86,38 @@
 </main>
 
 <div class="modal-overlay" id="editModal">
-  <div class="modal" style="max-width:460px;max-height:88vh;overflow-y:auto">
-    <h3>Editar negocio</h3>
-    <div class="field">
-      <label>Nombre del negocio</label>
-      <input type="text" id="editName">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3>Editar negocio</h3>
+      <button type="button" class="modal-close" id="closeEditBtn" aria-label="Cerrar">✕</button>
     </div>
-    <div class="field">
-      <label>Categoría</label>
-      <select id="editCategory"></select>
-    </div>
-    <div class="field">
-      <label>Dirección</label>
-      <input type="text" id="editAddress">
-    </div>
-    <div class="field">
-      <label>Fotos (una URL por línea, opcional)</label>
-      <textarea id="editPhotos" rows="3" placeholder="https://..."></textarea>
-    </div>
-    <div class="field">
-      <label>Catálogo de servicios</label>
-      <div id="editServicesRows"></div>
-      <button type="button" class="btn btn-outline btn-sm" id="addServiceRowBtn" style="margin-top:8px">+ Agregar servicio</button>
-    </div>
-    <div class="field">
-      <label>Personal / estilistas</label>
-      <div id="editStaffRows"></div>
-      <button type="button" class="btn btn-outline btn-sm" id="addStaffRowBtn" style="margin-top:8px">+ Agregar persona</button>
+    <div class="modal-body">
+      <div class="field">
+        <label>Nombre del negocio</label>
+        <input type="text" id="editName">
+      </div>
+      <div class="field">
+        <label>Categoría</label>
+        <select id="editCategory"></select>
+      </div>
+      <div class="field">
+        <label>Dirección</label>
+        <input type="text" id="editAddress">
+      </div>
+      <div class="field">
+        <label>Fotos (una URL por línea, opcional)</label>
+        <textarea id="editPhotos" rows="3" placeholder="https://..."></textarea>
+      </div>
+      <div class="field">
+        <label>Catálogo de servicios</label>
+        <div id="editServicesRows"></div>
+        <button type="button" class="btn btn-outline btn-sm" id="addServiceRowBtn" style="margin-top:8px">+ Agregar servicio</button>
+      </div>
+      <div class="field">
+        <label>Personal / estilistas</label>
+        <div id="editStaffRows"></div>
+        <button type="button" class="btn btn-outline btn-sm" id="addStaffRowBtn" style="margin-top:8px">+ Agregar persona</button>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cancelEditBtn">Cancelar</button>

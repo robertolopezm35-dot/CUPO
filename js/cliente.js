@@ -42,6 +42,7 @@
   let reviewBusinessId = null;
   let reviewStars = 0;
 
+  const dashTitleEl = document.getElementById("dashTitle");
   const areaTabsEl = document.getElementById("areaTabs");
   const dayTabsEl = document.getElementById("dayTabs");
   const filtersEl = document.getElementById("categoryFilters");
@@ -87,16 +88,17 @@
     });
   }
 
+  function dayLabel(i) {
+    if (i === 0) return "Hoy";
+    if (i === 1) return "Mañana";
+    const d = new Date(Date.now() + i * DAY_MS);
+    return d.toLocaleDateString("es-MX", { weekday: "short" }).replace(/^\w/, (c) => c.toUpperCase());
+  }
+
   function renderDayTabs() {
-    const labels = ["Hoy", "Mañana"];
     const html = [];
     for (let i = 0; i <= 6; i++) {
-      let label = labels[i];
-      if (!label) {
-        const d = new Date(Date.now() + i * DAY_MS);
-        label = d.toLocaleDateString("es-MX", { weekday: "short" }).replace(/^\w/, (c) => c.toUpperCase());
-      }
-      html.push(`<button class="day-tab ${i === dayOffset ? "active" : ""}" data-day="${i}">${label}</button>`);
+      html.push(`<button class="day-tab ${i === dayOffset ? "active" : ""}" data-day="${i}">${dayLabel(i)}</button>`);
     }
     dayTabsEl.innerHTML = html.join("");
     dayTabsEl.querySelectorAll(".day-tab").forEach((btn) => {
@@ -106,6 +108,9 @@
         await renderBusinesses();
       });
     });
+    dashTitleEl.textContent = dayOffset === 0
+      ? "Cupos disponibles hoy"
+      : `Cupos disponibles — ${dayLabel(dayOffset)}`;
   }
 
   function renderCategoryChips() {
@@ -434,17 +439,23 @@
     });
   });
 
-  document.getElementById("cancelReviewBtn").addEventListener("click", () => {
+  function closeReview() {
     reviewModal.classList.remove("show");
-  });
+  }
+  document.getElementById("cancelReviewBtn").addEventListener("click", closeReview);
+  document.getElementById("closeReviewBtn").addEventListener("click", closeReview);
+  reviewModal.addEventListener("click", (e) => { if (e.target === reviewModal) closeReview(); });
 
-  document.getElementById("submitReviewBtn").addEventListener("click", async () => {
+  const submitReviewBtn = document.getElementById("submitReviewBtn");
+  submitReviewBtn.addEventListener("click", async () => {
     if (!reviewStars) {
       showToast("Selecciona una calificación.");
       return;
     }
+    submitReviewBtn.disabled = true;
     const result = await DataStore.addReview(reviewBusinessId, client.id, { rating: reviewStars, comment: reviewComment.value });
-    reviewModal.classList.remove("show");
+    submitReviewBtn.disabled = false;
+    closeReview();
     if (!result.ok) {
       showToast(result.error);
     } else {
@@ -494,21 +505,34 @@
     });
   }
 
-  document.getElementById("cancelBookBtn").addEventListener("click", () => {
+  function closeConfirm() {
     pendingAction = null;
     confirmModal.classList.remove("show");
-  });
+  }
+  document.getElementById("cancelBookBtn").addEventListener("click", closeConfirm);
+  document.getElementById("closeConfirmBtn").addEventListener("click", closeConfirm);
+  confirmModal.addEventListener("click", (e) => { if (e.target === confirmModal) closeConfirm(); });
 
-  document.getElementById("confirmBookBtn").addEventListener("click", async () => {
+  const confirmBookBtn = document.getElementById("confirmBookBtn");
+  confirmBookBtn.addEventListener("click", async () => {
     if (!pendingAction) return;
     const action = pendingAction;
     pendingAction = null;
     confirmModal.classList.remove("show");
+    confirmBookBtn.disabled = true;
     await action();
+    confirmBookBtn.disabled = false;
   });
 
-  document.getElementById("folioOkBtn").addEventListener("click", () => {
+  function closeFolio() {
     folioModal.classList.remove("show");
+  }
+  document.getElementById("folioOkBtn").addEventListener("click", closeFolio);
+  document.getElementById("closeFolioBtn").addEventListener("click", closeFolio);
+  folioModal.addEventListener("click", (e) => { if (e.target === folioModal) closeFolio(); });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeConfirm(); closeFolio(); closeReview(); }
   });
 
   renderAreaTabs();
