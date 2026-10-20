@@ -13,8 +13,30 @@ const SupabaseStore = (() => {
   const cfg = window.SUPABASE_CONFIG || {};
   const isConfigured = !!(cfg.url && cfg.anonKey);
 
-  const client = isConfigured && window.supabase
-    ? window.supabase.createClient(cfg.url, cfg.anonKey)
+  // El cliente real se crea hasta el primer uso, no apenas se carga este
+  // script: si el <script> del CDN de supabase-js tarda en responder (una
+  // red lenta, un CDN congestionado), este archivo puede terminar de
+  // ejecutarse antes de que exista window.supabase, y el cliente se
+  // quedaría atorado en null para siempre en esa página. El Proxy difiere
+  // esa creación hasta que de verdad se llama algo (ej. client.auth,
+  // client.from(...)), momento en el que la página ya lleva rato cargada
+  // y window.supabase ya existe — sin tener que tocar cada llamada.
+  let realClient = null;
+  function resolveClient() {
+    if (!realClient && isConfigured && window.supabase) {
+      realClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+    }
+    return realClient;
+  }
+  const client = isConfigured
+    ? new Proxy({}, {
+        get(_target, prop) {
+          const c = resolveClient();
+          if (!c) return undefined;
+          const value = c[prop];
+          return typeof value === "function" ? value.bind(c) : value;
+        },
+      })
     : null;
 
   function labelFor(date) {
