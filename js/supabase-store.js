@@ -282,6 +282,32 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
+  async function updateSlot(businessId, slotId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
+    const offset = parseInt(dayOffset, 10) || 0;
+    const startsAt = new Date(Date.now() + offset * 86400000);
+    startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
+    const basePrice = parseInt(price, 10) || 0;
+    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
+    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
+    const { data, error } = await client
+      .from("slots")
+      .update({
+        starts_at: startsAt.toISOString(),
+        duration_minutes: parseInt(duration, 10) || 45,
+        price: finalPrice,
+        original_price: pct > 0 ? basePrice : null,
+        discount_pct: pct,
+        service: service || null,
+        staff_id: staffId || null,
+      })
+      .eq("id", slotId)
+      .eq("status", "available")
+      .select();
+    if (error) return { ok: false, error: error.message };
+    if (!data || !data.length) return { ok: false, error: "No puedes editar un cupo ya reservado. Reábrelo primero." };
+    return { ok: true };
+  }
+
   async function getSales(businessId) {
     const { data, error } = await client
       .from("sales")
@@ -458,6 +484,7 @@ const SupabaseStore = (() => {
     getClientById,
     bookSlot,
     addSlot,
+    updateSlot,
     reopenSlot,
     removeSlot,
     cancelReservation,

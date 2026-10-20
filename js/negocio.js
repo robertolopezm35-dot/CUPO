@@ -124,53 +124,72 @@
     document.getElementById("bizTitle").textContent = business.name;
   });
 
-  const hourSelect = document.getElementById("newHour");
-  for (let h = 8; h <= 21; h++) {
-    const displayH = h % 12 === 0 ? 12 : h % 12;
-    const ampm = h >= 12 ? "PM" : "AM";
-    const opt = document.createElement("option");
-    opt.value = h;
-    opt.textContent = displayH + ":00 " + ampm;
-    hourSelect.appendChild(opt);
+  function populateHourOptions(select) {
+    select.innerHTML = "";
+    for (let h = 8; h <= 21; h++) {
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = displayH + ":00 " + ampm;
+      select.appendChild(opt);
+    }
   }
 
-  const serviceSelect = document.getElementById("newService");
-  function renderServiceOptions() {
-    const current = serviceSelect.value;
-    serviceSelect.innerHTML = "";
+  function populateDayOptions(select) {
+    select.innerHTML = "";
+    for (let i = 0; i <= 6; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      if (i === 0) opt.textContent = "Hoy";
+      else if (i === 1) opt.textContent = "Mañana";
+      else {
+        const wd = new Date(Date.now() + i * 86400000).toLocaleDateString("es-MX", { weekday: "short" });
+        opt.textContent = wd.charAt(0).toUpperCase() + wd.slice(1);
+      }
+      select.appendChild(opt);
+    }
+  }
+
+  function populateServiceOptions(select) {
+    const current = select.value;
+    select.innerHTML = "";
     (DataStore.SERVICES_BY_CATEGORY[business.category] || []).forEach((svc) => {
       const opt = document.createElement("option");
       opt.value = svc;
       opt.textContent = svc;
-      serviceSelect.appendChild(opt);
+      select.appendChild(opt);
     });
-    if ([...serviceSelect.options].some((o) => o.value === current)) serviceSelect.value = current;
-  }
-  renderServiceOptions();
-
-  const dayOffsetSelect = document.getElementById("newDayOffset");
-  for (let i = 0; i <= 6; i++) {
-    const opt = document.createElement("option");
-    opt.value = i;
-    if (i === 0) opt.textContent = "Hoy";
-    else if (i === 1) opt.textContent = "Mañana";
-    else {
-      const wd = new Date(Date.now() + i * 86400000).toLocaleDateString("es-MX", { weekday: "short" });
-      opt.textContent = wd.charAt(0).toUpperCase() + wd.slice(1);
-    }
-    dayOffsetSelect.appendChild(opt);
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
   }
 
-  function renderStaffOptions() {
-    const staffSelect = document.getElementById("newStaff");
-    staffSelect.innerHTML = '<option value="">Sin preferencia</option>';
+  function populateStaffOptions(select) {
+    const current = select.value;
+    select.innerHTML = '<option value="">Sin preferencia</option>';
     (business.staff || []).forEach((st) => {
       const opt = document.createElement("option");
       opt.value = st.id;
       opt.textContent = st.name;
-      staffSelect.appendChild(opt);
+      select.appendChild(opt);
     });
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
   }
+
+  const hourSelect = document.getElementById("newHour");
+  const serviceSelect = document.getElementById("newService");
+  const dayOffsetSelect = document.getElementById("newDayOffset");
+  populateHourOptions(hourSelect);
+  populateDayOptions(dayOffsetSelect);
+  function renderServiceOptions() { populateServiceOptions(serviceSelect); }
+  function renderStaffOptions() { populateStaffOptions(document.getElementById("newStaff")); }
+  renderServiceOptions();
+
+  const editSlotHour = document.getElementById("editSlotHour");
+  const editSlotDayOffset = document.getElementById("editSlotDayOffset");
+  const editSlotService = document.getElementById("editSlotService");
+  const editSlotStaff = document.getElementById("editSlotStaff");
+  populateHourOptions(editSlotHour);
+  populateDayOptions(editSlotDayOffset);
 
   function showToast(msg) {
     const toast = document.getElementById("toast");
@@ -179,10 +198,106 @@
     setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
+  const slotDetailModal = document.getElementById("slotDetailModal");
+  const slotDetailEditable = document.getElementById("slotDetailEditable");
+  const slotDetailBookedInfo = document.getElementById("slotDetailBookedInfo");
+  const slotDetailActionsAvailable = document.getElementById("slotDetailActionsAvailable");
+  const slotDetailActionsBooked = document.getElementById("slotDetailActionsBooked");
+  let detailSlotId = null;
+
+  function closeSlotDetail() {
+    slotDetailModal.classList.remove("show");
+    detailSlotId = null;
+  }
+  document.getElementById("closeSlotDetailBtn").addEventListener("click", closeSlotDetail);
+  document.getElementById("cancelSlotDetailBtn").addEventListener("click", closeSlotDetail);
+  slotDetailModal.addEventListener("click", (e) => { if (e.target === slotDetailModal) closeSlotDetail(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSlotDetail(); });
+
+  function openSlotDetail(slotId) {
+    const slot = business.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    detailSlotId = slotId;
+
+    if (slot.status === "available") {
+      slotDetailEditable.hidden = false;
+      slotDetailBookedInfo.hidden = true;
+      slotDetailActionsAvailable.hidden = false;
+      slotDetailActionsBooked.hidden = true;
+
+      populateServiceOptions(editSlotService);
+      populateStaffOptions(editSlotStaff);
+      const dayIdx = Math.round((DataStore.startOfDay(slot.time) - DataStore.startOfDay(Date.now())) / 86400000);
+      editSlotDayOffset.value = String(Math.max(0, dayIdx));
+      editSlotHour.value = String(new Date(slot.time).getHours());
+      document.getElementById("editSlotDuration").value = slot.duration;
+      document.getElementById("editSlotPrice").value = slot.originalPrice || slot.price;
+      document.getElementById("editSlotDiscount").value = slot.discountPct || 0;
+      if (slot.service) editSlotService.value = slot.service;
+      editSlotStaff.value = slot.staffId || "";
+    } else {
+      slotDetailEditable.hidden = true;
+      slotDetailBookedInfo.hidden = false;
+      slotDetailActionsAvailable.hidden = true;
+      slotDetailActionsBooked.hidden = false;
+      slotDetailBookedInfo.textContent =
+        `Reservado por ${slot.clientName || "un cliente"} · ${slot.service ? slot.service + " · " : ""}${slot.label}` +
+        `${slot.staffName ? " · con " + slot.staffName : ""} · $${slot.price}. ` +
+        `Para liberar este cupo, reábrelo por cancelación.`;
+    }
+
+    slotDetailModal.classList.add("show");
+  }
+
+  document.getElementById("deleteSlotBtn").addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    await DataStore.removeSlot(business.id, detailSlotId);
+    closeSlotDetail();
+    showToast("Cupo eliminado.");
+    await render();
+  });
+
+  const saveSlotBtn = document.getElementById("saveSlotBtn");
+  saveSlotBtn.addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    saveSlotBtn.disabled = true;
+    const result = await DataStore.updateSlot(business.id, detailSlotId, {
+      hour: editSlotHour.value,
+      minute: 0,
+      duration: document.getElementById("editSlotDuration").value,
+      price: document.getElementById("editSlotPrice").value,
+      service: editSlotService.value,
+      dayOffset: editSlotDayOffset.value,
+      discountPct: document.getElementById("editSlotDiscount").value,
+      staffId: editSlotStaff.value,
+    });
+    saveSlotBtn.disabled = false;
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo guardar. Intenta de nuevo.");
+      return;
+    }
+    closeSlotDetail();
+    showToast("Cupo actualizado.");
+    await render();
+  });
+
+  document.getElementById("reopenSlotBtn").addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    await DataStore.reopenSlot(business.id, detailSlotId);
+    closeSlotDetail();
+    showToast("Cupo reabierto por cancelación.");
+    await render();
+  });
+
   async function render() {
     business = await getBusiness();
     renderStaffOptions();
-    const slots = business.slots.slice().sort((a, b) => a.time - b.time);
+    const todayStart = DataStore.startOfDay(Date.now());
+    // Solo de hoy en adelante, y en orden cronológico (hoy primero, luego
+    // mañana, etc.) — lo ya pasado vive en el dashboard de Ventas, no aquí.
+    const slots = business.slots
+      .filter((s) => s.time >= todayStart)
+      .sort((a, b) => a.time - b.time);
 
     const available = slots.filter((s) => s.status === "available");
     const booked = slots.filter((s) => s.status === "booked");
@@ -196,7 +311,6 @@
     if (!slots.length) {
       slotList.innerHTML = '<span style="color:var(--gray);font-size:13.5px">Aún no has publicado horarios. Agrega uno abajo.</span>';
     } else {
-      const todayStart = DataStore.startOfDay(Date.now());
       slotList.innerHTML = slots.map((s) => {
         const cls = s.status === "available" ? "available" : "mine";
         const sub = s.status === "available" ? "Disponible" : (s.clientName || "Reservado");
@@ -205,7 +319,7 @@
         const priceHtml = s.discountPct > 0
           ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
           : `<span class="price">$${s.price}</span>`;
-        return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ${s.status === 'available' ? 'quitar' : 'reabrir (cancelación)'}">
+        return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ver detalles">
           <span class="time">${dateStr}${s.label}</span>
           ${s.service ? `<span class="price">${s.service}</span>` : ""}
           ${priceHtml}
@@ -216,18 +330,7 @@
     }
 
     slotList.querySelectorAll(".slot").forEach((el) => {
-      el.addEventListener("click", async () => {
-        const slotId = el.dataset.slot;
-        const slot = business.slots.find((s) => s.id === slotId);
-        if (slot.status === "available") {
-          await DataStore.removeSlot(business.id, slotId);
-          showToast("Cupo eliminado.");
-        } else {
-          await DataStore.reopenSlot(business.id, slotId);
-          showToast("Cupo reabierto por cancelación.");
-        }
-        await render();
-      });
+      el.addEventListener("click", () => openSlotDetail(el.dataset.slot));
     });
 
     const bookingsList = document.getElementById("bookingsList");

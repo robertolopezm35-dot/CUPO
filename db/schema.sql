@@ -243,6 +243,10 @@ create policy "El negocio administra solo sus propios cupos"
   on public.slots for insert with check (auth.uid() = business_id);
 create policy "El negocio borra solo sus propios cupos"
   on public.slots for delete using (auth.uid() = business_id);
+create policy "El negocio edita solo sus propios cupos disponibles"
+  on public.slots for update
+  using (auth.uid() = business_id and status = 'available')
+  with check (auth.uid() = business_id);
 
 create policy "El cliente ve sus reservas, el negocio ve quién le reservó"
   on public.reservations for select

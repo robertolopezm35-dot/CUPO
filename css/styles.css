@@ -15,6 +15,12 @@
 
 * { box-sizing: border-box; }
 
+/* El atributo hidden debe ganar siempre, incluso sobre elementos cuya
+   clase les pone display:flex/grid (ej. .modal-actions, .favorites-banner)
+   — si no, [hidden] queda sin efecto porque la regla de la clase le gana
+   en especificidad al display:none que el navegador aplica por defecto. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;

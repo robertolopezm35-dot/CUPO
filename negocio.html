@@ -25,7 +25,7 @@
       <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
     </div>
   </div>
-  <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda.</p>
+  <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda. Clic en un cupo para ver sus detalles.</p>
 
   <div class="stat-row">
     <div class="stat-card">
@@ -84,6 +84,56 @@
     <div id="bookingsList"></div>
   </div>
 </main>
+
+<div class="modal-overlay" id="slotDetailModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Detalles del cupo</h3>
+      <button type="button" class="modal-close" id="closeSlotDetailBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="slotDetailBookedInfo" class="policy-note" hidden></p>
+      <div id="slotDetailEditable">
+        <div class="field">
+          <label>Día</label>
+          <select id="editSlotDayOffset"></select>
+        </div>
+        <div class="field">
+          <label>Servicio</label>
+          <select id="editSlotService"></select>
+        </div>
+        <div class="field">
+          <label>Hora</label>
+          <select id="editSlotHour"></select>
+        </div>
+        <div class="field">
+          <label>Duración (min)</label>
+          <input type="number" id="editSlotDuration" min="15" step="15">
+        </div>
+        <div class="field">
+          <label>Precio</label>
+          <input type="number" id="editSlotPrice" min="0" step="10">
+        </div>
+        <div class="field">
+          <label>Descuento %</label>
+          <input type="number" id="editSlotDiscount" min="0" max="90" step="5">
+        </div>
+        <div class="field">
+          <label>Estilista</label>
+          <select id="editSlotStaff"></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions" id="slotDetailActionsAvailable">
+      <button class="btn btn-outline btn-block" id="deleteSlotBtn">Eliminar</button>
+      <button class="btn btn-primary btn-block" id="saveSlotBtn">Guardar cambios</button>
+    </div>
+    <div class="modal-actions" id="slotDetailActionsBooked" hidden>
+      <button class="btn btn-outline btn-block" id="cancelSlotDetailBtn">Cerrar</button>
+      <button class="btn btn-primary btn-block" id="reopenSlotBtn">Reabrir cupo (cancelación)</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="editModal">
   <div class="modal" style="max-width:460px">

@@ -652,6 +652,38 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
+  function updateSlot(businessId, slotId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
+    const businesses = getBusinesses();
+    const business = businesses.find((b) => b.id === businessId);
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
+    const slot = business.slots.find((s) => s.id === slotId);
+    if (!slot) return { ok: false, error: "Cupo no encontrado." };
+    if (slot.status !== "available") {
+      return { ok: false, error: "No puedes editar un cupo ya reservado. Reábrelo primero." };
+    }
+    const h = parseInt(hour, 10);
+    const m = parseInt(minute, 10) || 0;
+    const displayH = h % 12 === 0 ? 12 : h % 12;
+    const ampm = h >= 12 ? "PM" : "AM";
+    const offset = parseInt(dayOffset, 10) || 0;
+    const basePrice = parseInt(price, 10) || 0;
+    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
+    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
+    const staff = (business.staff || []).find((st) => st.id === staffId) || null;
+    slot.time = dateAt(offset, h, m);
+    slot.label = displayH + ":" + String(m).padStart(2, "0") + " " + ampm;
+    slot.duration = parseInt(duration, 10) || 45;
+    slot.price = finalPrice;
+    slot.originalPrice = pct > 0 ? basePrice : null;
+    slot.discountPct = pct;
+    slot.service = service || null;
+    slot.staffId = staff ? staff.id : null;
+    slot.staffName = staff ? staff.name : null;
+    business.slots.sort((a, b) => a.time - b.time);
+    saveBusinesses(businesses);
+    return { ok: true };
+  }
+
   function reopenSlot(businessId, slotId) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
@@ -834,6 +866,7 @@ const CupoStore = (() => {
     registerBusiness,
     bookSlot,
     addSlot,
+    updateSlot,
     reopenSlot,
     removeSlot,
     cancelReservation,
