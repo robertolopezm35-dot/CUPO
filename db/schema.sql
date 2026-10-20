@@ -108,6 +108,12 @@ create table public.sales (
   client_id uuid references public.clients (id) on delete set null,
   service text,
   price numeric(10, 2) not null,
+  -- Copiados del cupo al momento de reservar (no se leen por join) para que
+  -- el dashboard de Ventas pueda reportar "ventas con descuento" (HU-16) y
+  -- "ventas por colaborador" (HU-17) aunque el cupo luego cambie o se borre.
+  original_price numeric(10, 2),
+  discount_pct int not null default 0,
+  staff_name text,
   client_name text,
   folio text,
   status text not null default 'completada' check (status in ('completada', 'cancelada')),
@@ -295,6 +301,7 @@ declare
   v_client_name text;
   v_slot public.slots;
   v_folio text;
+  v_staff_name text;
 begin
   select first_name || ' ' || last_name into v_client_name
   from public.clients where id = auth.uid();
@@ -314,12 +321,16 @@ begin
     raise exception 'Ese cupo ya no está disponible.';
   end if;
 
+  if v_slot.staff_id is not null then
+    select name into v_staff_name from public.staff where id = v_slot.staff_id;
+  end if;
+
   insert into public.reservations (slot_id, client_id, folio)
   values (p_slot_id, auth.uid(), v_folio)
   returning * into v_reservation;
 
-  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status)
-  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_client_name, auth.uid(), v_folio, 'completada');
+  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status, original_price, discount_pct, staff_name)
+  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_client_name, auth.uid(), v_folio, 'completada', v_slot.original_price, v_slot.discount_pct, v_staff_name);
 
   return v_reservation;
 end;

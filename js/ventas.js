@@ -64,6 +64,41 @@
     return new Date(ts).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
   }
 
+  const PREVIOUS_LABEL = { today: "ayer", "7": "los 7 días anteriores", "30": "los 30 días anteriores" };
+
+  function filterByPreviousPeriod(sales, p) {
+    const now = Date.now();
+    if (p === "today") {
+      const todayStart = startOfDay(now);
+      const yStart = todayStart - DAY_MS;
+      return sales.filter((s) => s.date >= yStart && s.date < todayStart);
+    }
+    if (p === "7" || p === "30") {
+      const days = parseInt(p, 10);
+      const end = now - days * DAY_MS;
+      const start = end - days * DAY_MS;
+      return sales.filter((s) => s.date >= start && s.date < end);
+    }
+    return [];
+  }
+
+  function renderTrend(el, current, previous, label) {
+    if (!label) {
+      el.textContent = "";
+      el.className = "trend";
+      return;
+    }
+    if (previous <= 0) {
+      el.textContent = current > 0 ? "Sin ventas en " + label + " para comparar" : "";
+      el.className = "trend";
+      return;
+    }
+    const pct = ((current - previous) / previous) * 100;
+    const sign = pct > 0 ? "+" : "";
+    el.textContent = sign + pct.toFixed(0) + "% vs. " + label;
+    el.className = "trend " + (pct > 0 ? "up" : pct < 0 ? "down" : "");
+  }
+
   function weekLabel(weekStart) {
     const start = new Date(weekStart);
     const end = new Date(weekStart + DAY_MS * 6);
@@ -112,30 +147,63 @@
     });
   }
 
-  function renderServiceRank(container, sales) {
-    const completed = sales.filter((s) => s.status === "completada" && s.service);
-    if (!completed.length) {
-      container.innerHTML = '<span style="color:var(--gray);font-size:13.5px">Sin ventas con servicio registrado en este período.</span>';
+  function groupAndRank(items, keyFn, opts = {}) {
+    const map = new Map();
+    items.forEach((item) => {
+      const key = keyFn(item);
+      if (!key) return;
+      const entry = map.get(key) || { count: 0, amount: 0 };
+      entry.count += 1;
+      entry.amount += item.price;
+      map.set(key, entry);
+    });
+    let rows = Array.from(map.entries())
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.amount - a.amount);
+    if (opts.limit) rows = rows.slice(0, opts.limit);
+    return rows;
+  }
+
+  function renderRankRows(container, rows, emptyMsg) {
+    if (!rows.length) {
+      container.innerHTML = `<span style="color:var(--gray);font-size:13.5px">${emptyMsg}</span>`;
       return;
     }
-    const byService = new Map();
-    completed.forEach((s) => {
-      const entry = byService.get(s.service) || { count: 0, amount: 0 };
-      entry.count += 1;
-      entry.amount += s.price;
-      byService.set(s.service, entry);
-    });
-    const rows = Array.from(byService.entries())
-      .map(([service, v]) => ({ service, ...v }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 6);
     container.innerHTML = rows.map((r) => `
       <div class="rank-row">
-        <span class="rank-name">${r.service}</span>
+        <span class="rank-name">${r.name}</span>
         <span class="rank-count">${r.count} venta${r.count === 1 ? "" : "s"}</span>
         <span class="rank-amount">${MONEY(r.amount)}</span>
       </div>
     `).join("");
+  }
+
+  function renderServiceRank(container, sales) {
+    const completed = sales.filter((s) => s.status === "completada" && s.service);
+    renderRankRows(container, groupAndRank(completed, (s) => s.service, { limit: 6 }), "Sin ventas con servicio registrado en este período.");
+  }
+
+  function renderStaffRank(container, sales) {
+    const completed = sales.filter((s) => s.status === "completada" && s.staffName);
+    renderRankRows(container, groupAndRank(completed, (s) => s.staffName), "Sin ventas asignadas a un colaborador en este período.");
+  }
+
+  function renderDiscountInsight(container, completed, total) {
+    const discounted = completed.filter((s) => s.discountPct > 0);
+    if (!discounted.length) {
+      container.innerHTML = '<span style="color:var(--gray);font-size:13.5px">No tuviste ventas con descuento en este período.</span>';
+      return;
+    }
+    const revenue = discounted.reduce((sum, s) => sum + s.price, 0);
+    const share = total ? (revenue / total) * 100 : 0;
+    const avgPct = discounted.reduce((sum, s) => sum + s.discountPct, 0) / discounted.length;
+    container.innerHTML = `
+      <div class="mini-stat-row">
+        <div class="mini-stat"><strong>${discounted.length}</strong><span>venta${discounted.length === 1 ? "" : "s"} con descuento</span></div>
+        <div class="mini-stat"><strong>${MONEY(revenue)}</strong><span>ingreso generado</span></div>
+        <div class="mini-stat"><strong>${share.toFixed(0)}%</strong><span>de tus ventas totales</span></div>
+        <div class="mini-stat"><strong>${avgPct.toFixed(0)}%</strong><span>descuento promedio</span></div>
+      </div>`;
   }
 
   function renderSalesList(container, sales) {
@@ -163,15 +231,37 @@
   function render() {
     const sales = filterByPeriod(allSales, period);
     const completed = sales.filter((s) => s.status === "completada");
+    const cancelled = sales.filter((s) => s.status === "cancelada");
 
     const total = completed.reduce((sum, s) => sum + s.price, 0);
     document.getElementById("statTotal").textContent = MONEY(total);
     document.getElementById("statTicket").textContent = MONEY(completed.length ? total / completed.length : 0);
     document.getElementById("statCount").textContent = completed.length;
 
+    const grossCount = completed.length + cancelled.length;
+    const cancelRate = grossCount ? (cancelled.length / grossCount) * 100 : 0;
+    document.getElementById("statCancelRate").textContent = cancelRate.toFixed(0) + "%";
+    document.getElementById("statCancelDetail").textContent = grossCount ? cancelled.length + " de " + grossCount + " citas" : "";
+    document.getElementById("statCancelCard").classList.toggle("warn", cancelRate >= 20);
+
+    const prevLabel = PREVIOUS_LABEL[period] || null;
+    const prevCompleted = filterByPreviousPeriod(allSales, period).filter((s) => s.status === "completada");
+    const prevTotal = prevCompleted.reduce((sum, s) => sum + s.price, 0);
+    renderTrend(document.getElementById("statTotalTrend"), total, prevTotal, prevLabel);
+
     renderBars(document.getElementById("dayChart"), bucketRevenue(sales), { money: true });
     renderBars(document.getElementById("hourChart"), bucketByHour(sales), { money: true });
+    renderDiscountInsight(document.getElementById("discountInsight"), completed, total);
     renderServiceRank(document.getElementById("serviceRank"), sales);
+
+    const staffRankCard = document.getElementById("staffRankCard");
+    if (business.staff && business.staff.length) {
+      staffRankCard.hidden = false;
+      renderStaffRank(document.getElementById("staffRank"), sales);
+    } else {
+      staffRankCard.hidden = true;
+    }
+
     renderSalesList(document.getElementById("salesList"), sales);
   }
 

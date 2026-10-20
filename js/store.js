@@ -369,11 +369,18 @@ const CupoStore = (() => {
     for (let i = 0; i < count; i++) {
       const cancelled = Math.random() < 0.08;
       const jitter = 0.85 + Math.random() * 0.3;
+      const discounted = Math.random() < 0.25;
+      const pct = discounted ? 10 + Math.floor(Math.random() * 5) * 5 : 0;
+      const original = Math.round((basePrice * jitter) / 10) * 10;
+      const price = discounted ? Math.round((original * (1 - pct / 100)) / 5) * 5 : original;
       sales.push({
         id: "v" + Math.random().toString(36).slice(2, 9),
         date: randomPastTimestamp(30),
         service: services[Math.floor(Math.random() * services.length)],
-        price: Math.round((basePrice * jitter) / 10) * 10,
+        price,
+        originalPrice: discounted ? original : null,
+        discountPct: pct,
+        staffName: null,
         clientName: DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)],
         slotId: null,
         status: cancelled ? "cancelada" : "completada",
@@ -590,6 +597,9 @@ const CupoStore = (() => {
       date: Date.now(),
       service: slot.service || null,
       price: slot.price,
+      originalPrice: slot.originalPrice || null,
+      discountPct: slot.discountPct || 0,
+      staffName: slot.staffName || null,
       clientName: client.name,
       clientId: client.id,
       slotId,

@@ -172,6 +172,59 @@ visible para el negocio dueño del cupo (política extra en `clients`) y que las
 reseñas guarden `client_name` en la propia fila (no por join) para que no salgan en
 null por la política de RLS de `clients`.
 
+## Dashboard de Ventas — mejoras
+
+Sobre el dashboard de Ventas original (ver "Dashboard de Ventas" arriba) se agregaron
+cuatro mejoras, todas enfocadas en conectar el dashboard con features que ya existían
+pero no se reportaban en ningún lado:
+
+- **Tendencia vs. período anterior:** el total de ventas ahora muestra un "+X% vs.
+  ayer" (o "vs. los 7/30 días anteriores", según la pestaña activa) comparando contra
+  el período equivalente inmediato anterior. No aplica en la pestaña "Todo".
+- **Tasa de cancelación:** nueva 4ta tarjeta de estadística — qué % de las citas del
+  período se cancelaron, con la tarjeta en rojo si es ≥20%. Antes solo se veía
+  cancelación por cancelación en la lista de historial, sin ningún resumen.
+- **"Ventas con descuento":** nueva tarjeta de insight que muestra cuántas ventas,
+  cuánto ingreso, qué % del total y qué descuento promedio vinieron de cupos
+  publicados con descuento (HU-16) — para que el negocio sepa si sus descuentos de
+  último momento realmente le están generando ventas o no.
+- **"Ventas por colaborador":** nueva gráfica tipo ranking (igual que "Servicios más
+  vendidos") agrupando ventas por el estilista/personal asignado al cupo (HU-17).
+  Solo aparece si el negocio tiene al menos un colaborador dado de alta — para no
+  mostrar una gráfica vacía en los negocios que no usan esa función (la mayoría de
+  los 30 negocios semilla, que arrancan sin personal — ver "Fotos de negocio" arriba).
+
+Para que estas dos últimas funcionen, cada venta ahora guarda una copia de
+`discount_pct`/`original_price`/`staff_name` del cupo al momento de reservarlo (antes
+se perdían). Esto requirió:
+
+- `js/store.js` (`bookSlot`, `seedSales`): nuevos campos en cada venta.
+- `js/supabase-store.js` (`mapSale`): lee las columnas nuevas.
+- `db/schema.sql`: nuevas columnas `original_price`, `discount_pct`, `staff_name` en
+  `sales`, y `book_slot()` actualizada para llenarlas (copia el staff del cupo por su
+  nombre, no por id, por la misma razón que `reviews.client_name` — para que no se
+  pierda si el negocio borra o cambia ese colaborador después).
+
+**Acción pendiente tuya:** si ya conectaste Supabase, corre esto una sola vez en el
+SQL Editor para traer tu base al día (es seguro de volver a correr, no borra nada):
+
+```sql
+alter table public.sales
+  add column if not exists original_price numeric(10, 2),
+  add column if not exists discount_pct int not null default 0,
+  add column if not exists staff_name text;
+```
+
+y luego vuelve a pegar y correr la función `book_slot()` completa de `db/schema.sql`
+(el `create or replace function` no afecta los datos existentes). Mientras no corras
+esto, el sitio real sigue funcionando igual — las ventas nuevas simplemente no
+tendrán esos tres campos hasta que lo hagas.
+
+Todo esto se probó a fondo con Playwright en modo localStorage (datos inyectados a
+mano para verificar los cálculos exactos de tendencia, tasa de cancelación, insight de
+descuentos y ranking por colaborador) — no contra Supabase real, igual que el resto de
+cambios de esquema de este proyecto (ver "Sin probar en vivo" arriba).
+
 ## Enlaces
 
 - **Repo / rama de trabajo:** `feature/cupo-web-app` en

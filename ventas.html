@@ -31,10 +31,11 @@
     <button data-period="all">Todo</button>
   </div>
 
-  <div class="stat-row">
+  <div class="stat-row cols-4">
     <div class="stat-card">
       <div class="num" id="statTotal">$0</div>
       <div class="lbl">Total de ventas</div>
+      <div class="trend" id="statTotalTrend"></div>
     </div>
     <div class="stat-card">
       <div class="num" id="statTicket">$0</div>
@@ -44,6 +45,17 @@
       <div class="num" id="statCount">0</div>
       <div class="lbl">Clientes atendidos</div>
     </div>
+    <div class="stat-card" id="statCancelCard">
+      <div class="num" id="statCancelRate">0%</div>
+      <div class="lbl">Tasa de cancelación</div>
+      <div class="trend" id="statCancelDetail"></div>
+    </div>
+  </div>
+
+  <div class="chart-card discount-insight">
+    <h3>🏷️ Ventas con descuento</h3>
+    <p class="chart-sub">Lo que te generan tus cupos de cancelación con descuento</p>
+    <div id="discountInsight"></div>
   </div>
 
   <div class="chart-card">
@@ -60,6 +72,11 @@
   <div class="chart-card">
     <h3>Servicios más vendidos</h3>
     <div id="serviceRank"></div>
+  </div>
+
+  <div class="chart-card" id="staffRankCard" hidden>
+    <h3>Ventas por colaborador</h3>
+    <div id="staffRank"></div>
   </div>
 
   <div style="margin-top:32px">
