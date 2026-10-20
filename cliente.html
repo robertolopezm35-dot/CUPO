@@ -23,12 +23,27 @@
 
   <div class="area-tabs" id="areaTabs"></div>
 
+  <div class="day-tabs" id="dayTabs"></div>
+
   <div class="search-row">
     <input type="text" id="searchInput" class="search-input" placeholder="Buscar por nombre de negocio...">
     <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
+    <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn">♡ Solo favoritos</button>
+  </div>
+
+  <div class="search-row">
+    <select id="serviceFilter" class="filter-select"><option value="">Todos los servicios</option></select>
+    <select id="horarioFilter" class="filter-select">
+      <option value="">Todo el horario</option>
+      <option value="morning">Mañana (8–12)</option>
+      <option value="afternoon">Tarde (12–17)</option>
+      <option value="evening">Noche (17–21)</option>
+    </select>
   </div>
 
   <div class="toolbar" id="categoryFilters"></div>
+
+  <div id="favoritesBanner" class="favorites-banner" hidden></div>
 
   <div id="comingSoonPanel" class="coming-soon-panel" hidden>
     <div class="emoji">🩺</div>
@@ -48,9 +63,42 @@
   <div class="modal">
     <h3 id="confirmTitle">Confirmar reserva</h3>
     <p id="confirmText"></p>
+    <p id="confirmPolicy" class="policy-note" hidden>Puedes cancelar sin costo hasta 1 hora antes de tu cita. Pagas directamente en el negocio.</p>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cancelBookBtn">Regresar</button>
       <button class="btn btn-primary btn-block" id="confirmBookBtn">Reservar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="folioModal">
+  <div class="modal">
+    <h3>¡Reserva confirmada! 🎉</h3>
+    <p id="folioText"></p>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-block" id="folioOkBtn">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reviewModal">
+  <div class="modal">
+    <h3>Dejar reseña</h3>
+    <p id="reviewBusinessName" class="policy-note"></p>
+    <div class="star-picker" id="starPicker">
+      <button type="button" data-star="1">★</button>
+      <button type="button" data-star="2">★</button>
+      <button type="button" data-star="3">★</button>
+      <button type="button" data-star="4">★</button>
+      <button type="button" data-star="5">★</button>
+    </div>
+    <div class="field">
+      <label>Comentario (opcional)</label>
+      <textarea id="reviewComment" rows="3" placeholder="¿Cómo te fue?"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="cancelReviewBtn">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="submitReviewBtn">Enviar reseña</button>
     </div>
   </div>
 </div>

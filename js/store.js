@@ -258,10 +258,24 @@ const CupoStore = (() => {
     { iso: "ZW", name: "Zimbabue", dial: "+263" },
   ].map((c) => ({ ...c, flag: flagEmoji(c.iso) }));
 
-  function todayAt(hour, minute) {
-    const d = new Date();
+  function dateAt(dayOffset, hour, minute) {
+    const d = new Date(Date.now() + dayOffset * 86400000);
     d.setHours(hour, minute, 0, 0);
     return d.getTime();
+  }
+
+  function todayAt(hour, minute) {
+    return dateAt(0, hour, minute);
+  }
+
+  function startOfDay(ts) {
+    const d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function generateFolio() {
+    return "CUPO-" + Math.random().toString(36).slice(2, 8).toUpperCase();
   }
 
   function seedSlots(baseHour, count, price, services) {
@@ -271,16 +285,64 @@ const CupoStore = (() => {
       slots.push({
         id: "s" + Math.random().toString(36).slice(2, 9),
         time: todayAt(h, 0),
+        createdAt: Date.now(),
         label: (h > 12 ? h - 12 : h) + ":00 " + (h >= 12 ? "PM" : "AM"),
         duration: 45,
         price: price,
+        originalPrice: null,
+        discountPct: 0,
         service: services ? services[i % services.length] : null,
+        staffId: null,
+        staffName: null,
         status: "available",
         clientId: null,
         clientName: null,
       });
     }
     return slots;
+  }
+
+  const DEMO_REVIEW_COMMENTS = [
+    "Excelente atención, muy recomendado.",
+    "Puntuales y buen servicio.",
+    "Me encantó el resultado, voy a volver.",
+    "Buena atención, el lugar está limpio y ordenado.",
+    "Resolvieron mi cita de último momento, gracias.",
+    "Precio justo y buen trato.",
+    "Todo bien, aunque esperé unos minutos extra.",
+    "Muy profesionales, superó mis expectativas.",
+  ];
+
+  // Reseñas de demostración (mismo criterio que seedSales: nombres y
+  // comentarios genéricos, no opiniones reales de clientes de estos negocios).
+  function seedReviews(baseRating) {
+    const count = 3 + Math.floor(Math.random() * 6);
+    const reviews = [];
+    for (let i = 0; i < count; i++) {
+      const jitter = Math.random() < 0.7 ? 0 : Math.random() < 0.5 ? -1 : 1;
+      const rating = Math.max(1, Math.min(5, Math.round(baseRating) + jitter));
+      reviews.push({
+        id: "r" + Math.random().toString(36).slice(2, 9),
+        clientId: null,
+        clientName: DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)],
+        rating,
+        comment: DEMO_REVIEW_COMMENTS[Math.floor(Math.random() * DEMO_REVIEW_COMMENTS.length)],
+        date: randomPastTimestamp(60),
+      });
+    }
+    reviews.sort((a, b) => b.date - a.date);
+    return reviews;
+  }
+
+  // Catálogo de servicios con precio para el perfil del negocio (igual de
+  // "demo" que el resto de precios semilla: no es la lista de precios real
+  // de estos negocios).
+  function seedServicesCatalog(category, basePrice) {
+    const services = SERVICES_BY_CATEGORY[category] || [];
+    return services.map((name, i) => ({
+      name,
+      price: Math.round((basePrice * (0.8 + i * 0.15)) / 10) * 10,
+    }));
   }
 
   const DEMO_CLIENT_NAMES = [
@@ -372,7 +434,16 @@ const CupoStore = (() => {
       { id: "b28", name: "Dra. Gina González Beyou", category: "Estética facial", address: "Monterrey", lat: 25.6550, lng: -100.3550, email: "drginagonzalez@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 9, 3, 1200) },
       { id: "b29", name: "Dra. Sindy Sánchez", category: "Estética facial", address: "Plaza Mirador, Guadalupe", lat: 25.6773, lng: -100.2597, email: "drasindysanchez@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Estética facial", 13, 3, 1150) },
       { id: "b30", name: "JOSSCLAUDE & BeLLVeR", category: "Estética facial", address: "Monterrey", lat: 25.6700, lng: -100.3200, email: "jossclaude@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 15, 3, 850) },
-    ];
+    ].map((b) => ({
+      ...b,
+      reviews: seedReviews(b.rating),
+      servicesCatalog: seedServicesCatalog(b.category, b.slots[0] ? b.slots[0].price : 200),
+      // Fotos y personal quedan vacíos a propósito: son datos reales del
+      // negocio (no inventamos fotos ni nombres de empleados de negocios
+      // reales), se llenan cuando el negocio edita su perfil.
+      photos: [],
+      staff: [],
+    }));
   }
 
   const MTY_CENTER = { lat: 25.6714, lng: -100.3095 };
@@ -466,6 +537,8 @@ const CupoStore = (() => {
       countryCode,
       phone,
       reservations: [],
+      favoriteBusinessIds: [],
+      lastFavoritesCheck: Date.now(),
     };
     clients.push(client);
     saveClients(clients);
@@ -489,6 +562,10 @@ const CupoStore = (() => {
       rating: 5.0,
       slots: [],
       sales: [],
+      reviews: [],
+      servicesCatalog: [],
+      photos: [],
+      staff: [],
     };
     businesses.push(business);
     saveBusinesses(businesses);
@@ -503,6 +580,7 @@ const CupoStore = (() => {
     if (!slot || slot.status !== "available") {
       return { ok: false, error: "Ese cupo ya no está disponible." };
     }
+    const folio = generateFolio();
     slot.status = "booked";
     slot.clientId = client.id;
     slot.clientName = client.name;
@@ -513,7 +591,9 @@ const CupoStore = (() => {
       service: slot.service || null,
       price: slot.price,
       clientName: client.name,
+      clientId: client.id,
       slotId,
+      folio,
       status: "completada",
     });
     saveBusinesses(businesses);
@@ -527,13 +607,17 @@ const CupoStore = (() => {
         slotId,
         label: slot.label,
         price: slot.price,
+        service: slot.service || null,
+        staffName: slot.staffName || null,
+        duration: slot.duration,
+        folio,
       });
       saveClients(clients);
     }
-    return { ok: true };
+    return { ok: true, folio };
   }
 
-  function addSlot(businessId, { hour, minute, duration, price, service }) {
+  function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false };
@@ -542,13 +626,23 @@ const CupoStore = (() => {
     const displayH = h % 12 === 0 ? 12 : h % 12;
     const ampm = h >= 12 ? "PM" : "AM";
     const label = displayH + ":" + String(m).padStart(2, "0") + " " + ampm;
+    const offset = parseInt(dayOffset, 10) || 0;
+    const basePrice = parseInt(price, 10) || 0;
+    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
+    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
+    const staff = (business.staff || []).find((st) => st.id === staffId) || null;
     business.slots.push({
       id: "s" + Math.random().toString(36).slice(2, 9),
-      time: todayAt(h, m),
+      time: dateAt(offset, h, m),
+      createdAt: Date.now(),
       label,
       duration: parseInt(duration, 10) || 45,
-      price: parseInt(price, 10) || 0,
+      price: finalPrice,
+      originalPrice: pct > 0 ? basePrice : null,
+      discountPct: pct,
       service: service || null,
+      staffId: staff ? staff.id : null,
+      staffName: staff ? staff.name : null,
       status: "available",
       clientId: null,
       clientName: null,
@@ -567,6 +661,7 @@ const CupoStore = (() => {
     slot.status = "available";
     slot.clientId = null;
     slot.clientName = null;
+    slot.createdAt = Date.now();
     saveBusinesses(businesses);
     return { ok: true };
   }
@@ -606,13 +701,16 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
-  function updateBusiness(businessId, { name, category, address }) {
+  function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false };
     business.name = name;
     business.category = category;
     business.address = address;
+    if (servicesCatalog !== undefined) business.servicesCatalog = servicesCatalog;
+    if (photos !== undefined) business.photos = photos;
+    if (staff !== undefined) business.staff = staff;
     saveBusinesses(businesses);
     return { ok: true, business };
   }
@@ -621,6 +719,95 @@ const CupoStore = (() => {
     const business = getBusinessById(businessId);
     if (!business) return [];
     return (business.sales || []).slice().sort((a, b) => b.date - a.date);
+  }
+
+  // ¿El cliente tuvo (o tiene) una reserva en este negocio? Requisito mínimo
+  // para poder dejar reseña — ver HU-06 del Marco de trabajo ágil.
+  function hasReservationAt(clientId, businessId) {
+    const business = getBusinessById(businessId);
+    if (!business) return false;
+    return (business.sales || []).some((v) => v.clientId === clientId);
+  }
+
+  function addReview(businessId, clientId, { rating, comment }) {
+    if (!hasReservationAt(clientId, businessId)) {
+      return { ok: false, error: "Solo quienes ya reservaron en este negocio pueden dejar una reseña." };
+    }
+    const r = Math.max(1, Math.min(5, parseInt(rating, 10) || 0));
+    if (!r) return { ok: false, error: "Selecciona una calificación de 1 a 5." };
+    const businesses = getBusinesses();
+    const business = businesses.find((b) => b.id === businessId);
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
+    const client = getClientById(clientId);
+    if (!Array.isArray(business.reviews)) business.reviews = [];
+    const existing = business.reviews.find((rv) => rv.clientId === clientId);
+    const entry = {
+      id: existing ? existing.id : "r" + Math.random().toString(36).slice(2, 9),
+      clientId,
+      clientName: client ? client.name : "Cliente",
+      rating: r,
+      comment: (comment || "").trim(),
+      date: Date.now(),
+    };
+    if (existing) {
+      Object.assign(existing, entry);
+    } else {
+      business.reviews.push(entry);
+    }
+    saveBusinesses(businesses);
+    return { ok: true };
+  }
+
+  function getAverageRating(business) {
+    const reviews = business.reviews || [];
+    if (!reviews.length) return business.rating;
+    return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+  }
+
+  function toggleFavorite(clientId, businessId) {
+    const clients = getClients();
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return { ok: false };
+    if (!Array.isArray(client.favoriteBusinessIds)) client.favoriteBusinessIds = [];
+    const idx = client.favoriteBusinessIds.indexOf(businessId);
+    let favorited;
+    if (idx >= 0) {
+      client.favoriteBusinessIds.splice(idx, 1);
+      favorited = false;
+    } else {
+      client.favoriteBusinessIds.push(businessId);
+      client.lastFavoritesCheck = Date.now();
+      favorited = true;
+    }
+    saveClients(clients);
+    return { ok: true, favorited };
+  }
+
+  // Aviso local (no es push real): cupos disponibles en negocios favoritos
+  // publicados o reabiertos desde la última vez que se revisó. Ver HU-11.
+  function getNewFavoriteSlots(clientId) {
+    const client = getClientById(clientId);
+    if (!client || !(client.favoriteBusinessIds || []).length) return [];
+    const since = client.lastFavoritesCheck || 0;
+    const businesses = getBusinesses().filter((b) => client.favoriteBusinessIds.includes(b.id));
+    const fresh = [];
+    businesses.forEach((b) => {
+      (b.slots || []).forEach((s) => {
+        if (s.status === "available" && s.createdAt > since) {
+          fresh.push({ businessId: b.id, businessName: b.name, slotId: s.id, label: s.label, service: s.service });
+        }
+      });
+    });
+    return fresh;
+  }
+
+  function touchFavoritesCheck(clientId) {
+    const clients = getClients();
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return { ok: false };
+    client.lastFavoritesCheck = Date.now();
+    saveClients(clients);
+    return { ok: true };
   }
 
   return {
@@ -652,6 +839,13 @@ const CupoStore = (() => {
     cancelReservation,
     updateBusiness,
     getSales,
+    startOfDay,
+    addReview,
+    hasReservationAt,
+    getAverageRating,
+    toggleFavorite,
+    getNewFavoriteSlots,
+    touchFavoritesCheck,
   };
 })();
 

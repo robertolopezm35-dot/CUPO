@@ -32,10 +32,15 @@ const SupabaseStore = (() => {
     return {
       id: row.id,
       time: date.getTime(),
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
       label: labelFor(date),
       duration: row.duration_minutes,
       price: Number(row.price),
+      originalPrice: row.original_price != null ? Number(row.original_price) : null,
+      discountPct: row.discount_pct || 0,
       service: row.service || null,
+      staffId: row.staff_id || null,
+      staffName: row.staff ? row.staff.name : null,
       status: row.status,
       reservationId: reservation ? reservation.id : null,
       clientId: reservation ? reservation.client_id : null,
@@ -50,12 +55,26 @@ const SupabaseStore = (() => {
       service: row.service,
       price: Number(row.price),
       clientName: row.client_name,
+      clientId: row.client_id || null,
+      businessId: row.business_id,
       slotId: row.slot_id,
+      folio: row.folio || null,
       status: row.status,
     };
   }
 
-  function mapBusiness(row) {
+  function mapReview(row) {
+    return {
+      id: row.id,
+      clientId: row.client_id,
+      clientName: row.client_name || "Cliente",
+      rating: row.rating,
+      comment: row.comment || "",
+      date: new Date(row.created_at).getTime(),
+    };
+  }
+
+  function mapBusiness(row, mySales) {
     return {
       id: row.id,
       name: row.name,
@@ -64,8 +83,29 @@ const SupabaseStore = (() => {
       lat: row.lat,
       lng: row.lng,
       rating: Number(row.rating),
+      photos: row.photos || [],
+      servicesCatalog: row.services_catalog || [],
+      staff: (row.staff || []).map((s) => ({ id: s.id, name: s.name })),
+      reviews: (row.reviews || []).map(mapReview),
+      // Nunca las ventas de otros clientes — solo las propias del que
+      // consulta (o ninguna, si quien consulta es el propio negocio o no
+      // hay sesión). Ver has_reservation_at/get_my_sales en schema.sql.
+      sales: (mySales || []).filter((s) => s.businessId === row.id),
       slots: (row.slots || []).map(mapSlot).sort((a, b) => a.time - b.time),
     };
+  }
+
+  const BUSINESS_SELECT = `
+    *,
+    staff(id, name),
+    reviews(id, client_id, client_name, rating, comment, created_at),
+    slots(*, staff(name), reservations(id, client_id, clients(first_name, last_name)))
+  `;
+
+  async function getMySales() {
+    const { data, error } = await client.rpc("get_my_sales");
+    if (error) return [];
+    return (data || []).map(mapSale);
   }
 
   async function getSession() {
@@ -143,27 +183,31 @@ const SupabaseStore = (() => {
   }
 
   async function getBusinesses() {
-    const { data, error } = await client
-      .from("businesses")
-      .select("*, slots(*, reservations(id, client_id, clients(first_name, last_name)))");
+    const [{ data, error }, mySales] = await Promise.all([
+      client.from("businesses").select(BUSINESS_SELECT),
+      getMySales(),
+    ]);
     if (error) throw error;
-    return (data || []).map(mapBusiness);
+    return (data || []).map((row) => mapBusiness(row, mySales));
   }
 
   async function getBusinessById(id) {
-    const { data, error } = await client
-      .from("businesses")
-      .select("*, slots(*, reservations(id, client_id, clients(first_name, last_name)))")
-      .eq("id", id)
-      .single();
+    const [{ data, error }, mySales] = await Promise.all([
+      client.from("businesses").select(BUSINESS_SELECT).eq("id", id).single(),
+      getMySales(),
+    ]);
     if (error || !data) return null;
-    return mapBusiness(data);
+    return mapBusiness(data, mySales);
   }
 
   async function getClientById(id) {
     const { data, error } = await client
       .from("clients")
-      .select("*, reservations(id, slot_id, slots(starts_at, price, businesses(name)))")
+      .select(`
+        *,
+        favorites(business_id),
+        reservations(id, slot_id, folio, slots(starts_at, price, duration_minutes, service, staff_id, staff(name), businesses(id, name)))
+      `)
       .eq("id", id)
       .single();
     if (error || !data) return null;
@@ -172,32 +216,45 @@ const SupabaseStore = (() => {
       firstName: data.first_name,
       lastName: data.last_name,
       name: data.first_name + " " + data.last_name,
+      favoriteBusinessIds: (data.favorites || []).map((f) => f.business_id),
+      lastFavoritesCheck: data.last_favorites_check ? new Date(data.last_favorites_check).getTime() : 0,
       reservations: (data.reservations || []).map((r) => ({
         reservationId: r.id,
-        businessId: null,
+        businessId: r.slots.businesses.id,
         businessName: r.slots.businesses.name,
         slotId: r.slot_id,
         label: labelFor(new Date(r.slots.starts_at)),
         price: Number(r.slots.price),
+        service: r.slots.service || null,
+        staffName: r.slots.staff ? r.slots.staff.name : null,
+        duration: r.slots.duration_minutes,
+        folio: r.folio || null,
       })),
     };
   }
 
   async function bookSlot(businessId, slotId) {
-    const { error } = await client.rpc("book_slot", { p_slot_id: slotId });
+    const { data, error } = await client.rpc("book_slot", { p_slot_id: slotId });
     if (error) return { ok: false, error: error.message };
-    return { ok: true };
+    return { ok: true, folio: data ? data.folio : null };
   }
 
-  async function addSlot(businessId, { hour, minute, duration, price, service }) {
-    const startsAt = new Date();
+  async function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
+    const offset = parseInt(dayOffset, 10) || 0;
+    const startsAt = new Date(Date.now() + offset * 86400000);
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
+    const basePrice = parseInt(price, 10) || 0;
+    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
+    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
     const { error } = await client.from("slots").insert({
       business_id: businessId,
       starts_at: startsAt.toISOString(),
       duration_minutes: parseInt(duration, 10) || 45,
-      price: parseInt(price, 10) || 0,
+      price: finalPrice,
+      original_price: pct > 0 ? basePrice : null,
+      discount_pct: pct,
       service: service || null,
+      staff_id: staffId || null,
     });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
@@ -231,8 +288,76 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
-  async function updateBusiness(businessId, { name, category, address }) {
-    const { error } = await client.from("businesses").update({ name, category, address }).eq("id", businessId);
+  async function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff }) {
+    const patch = { name, category, address };
+    if (servicesCatalog !== undefined) patch.services_catalog = servicesCatalog;
+    if (photos !== undefined) patch.photos = photos;
+    const { error } = await client.from("businesses").update(patch).eq("id", businessId);
+    if (error) return { ok: false, error: error.message };
+
+    if (staff !== undefined) {
+      // Reemplaza la lista completa: borra los que ya no están, actualiza
+      // los que siguen y da de alta los nuevos (llegan con un id local
+      // temporal tipo "ST-xxxxx" que no existe en la tabla, así que se
+      // insertan sin id y Postgres genera el real).
+      const { data: existing } = await client.from("staff").select("id").eq("business_id", businessId);
+      const existingIds = (existing || []).map((s) => s.id);
+      const keepIds = staff.map((s) => s.id).filter((id) => existingIds.includes(id));
+      const toDelete = existingIds.filter((id) => !keepIds.includes(id));
+      if (toDelete.length) {
+        await client.from("staff").delete().in("id", toDelete);
+      }
+      for (const s of staff) {
+        if (existingIds.includes(s.id)) {
+          await client.from("staff").update({ name: s.name }).eq("id", s.id);
+        } else {
+          await client.from("staff").insert({ business_id: businessId, name: s.name });
+        }
+      }
+    }
+    return { ok: true };
+  }
+
+  async function hasReservationAt(clientId, businessId) {
+    const { data, error } = await client.rpc("has_reservation_at", { p_business_id: businessId });
+    if (error) return false;
+    return !!data;
+  }
+
+  async function addReview(businessId, clientId, { rating, comment }) {
+    const { error } = await client.rpc("add_review", {
+      p_business_id: businessId,
+      p_rating: parseInt(rating, 10) || 0,
+      p_comment: comment || "",
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }
+
+  function getAverageRating(business) {
+    return CupoStore.getAverageRating(business);
+  }
+
+  async function toggleFavorite(clientId, businessId) {
+    const { data, error } = await client.rpc("toggle_favorite", { p_business_id: businessId });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, favorited: !!data };
+  }
+
+  async function getNewFavoriteSlots(clientId) {
+    const { data, error } = await client.rpc("get_new_favorite_slots");
+    if (error) return [];
+    return (data || []).map((row) => ({
+      businessId: row.business_id,
+      businessName: row.business_name,
+      slotId: row.slot_id,
+      label: labelFor(new Date(row.starts_at)),
+      service: row.service,
+    }));
+  }
+
+  async function touchFavoritesCheck(clientId) {
+    const { error } = await client.rpc("touch_favorites_check");
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   }
@@ -259,7 +384,12 @@ const SupabaseStore = (() => {
       });
       if (result.ok) {
         created++;
-        await client.from("businesses").update({ lat: b.lat, lng: b.lng, rating: b.rating }).eq("id", result.business.id);
+        await client.from("businesses").update({
+          lat: b.lat,
+          lng: b.lng,
+          rating: b.rating,
+          services_catalog: b.servicesCatalog || [],
+        }).eq("id", result.business.id);
         for (const s of b.slots) {
           await addSlot(result.business.id, {
             hour: new Date(s.time).getHours(),
@@ -267,6 +397,9 @@ const SupabaseStore = (() => {
             duration: s.duration,
             price: s.price,
             service: s.service,
+            dayOffset: 0,
+            discountPct: s.discountPct || 0,
+            staffId: null,
           });
         }
         await client.auth.signOut();
@@ -283,6 +416,7 @@ const SupabaseStore = (() => {
     COUNTRY_CODES: CupoStore.COUNTRY_CODES,
     MTY_CENTER: CupoStore.MTY_CENTER,
     distanceKm: CupoStore.distanceKm,
+    startOfDay: CupoStore.startOfDay,
     isConfigured,
     init: () => {},
     getSession,
@@ -301,6 +435,12 @@ const SupabaseStore = (() => {
     cancelReservation,
     updateBusiness,
     getSales,
+    hasReservationAt,
+    addReview,
+    getAverageRating,
+    toggleFavorite,
+    getNewFavoriteSlots,
+    touchFavoritesCheck,
     seedDemoBusinesses,
   };
 })();

@@ -114,6 +114,64 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
   días generadas por código (`seedSales` en `js/store.js`) — nombres de clientes
   genéricos, igual de "demo" que los logins `nombre@cupo.mx` / `1234`.
 
+## Backlog ágil — funcionalidades agregadas esta fase
+
+Se revisó el documento "Marco de trabajo ágil" del equipo (Product Backlog con
+historias de usuario HU-01 a HU-18, prioridad MoSCoW) para ver qué le faltaba a la
+app. De las historias que se podían construir sin depender de una cuenta o servicio
+externo, se implementaron:
+
+- **HU-05 — Folio de confirmación:** cada reserva genera un folio corto
+  (`CUPO-XXXXXX`, ver `generateFolio()` en `js/store.js`) que se muestra en un modal
+  de confirmación y queda guardado en la reserva del cliente.
+- **HU-13 — Duración y política de cancelación:** cada cupo muestra su duración en
+  minutos; el modal de reserva aclara "puedes cancelar sin costo hasta 1 hora antes,
+  pagas en el negocio" (política de texto — el cobro en línea es HU-08, ver
+  "Pendiente" abajo).
+- **HU-10 — Filtro por servicio y horario:** en el panel del cliente, además del
+  buscador por nombre, hay un filtro por servicio (depende de la categoría activa) y
+  por franja horaria (mañana/tarde/noche).
+- **HU-09 — Reservar para otros días:** el cliente ve y reserva cupos de los
+  próximos 7 días (pestañas Hoy/Mañana/...), no solo hoy; el negocio elige el día al
+  publicar un cupo.
+- **HU-02 — Catálogo de servicios y fotos en el perfil:** el negocio edita su
+  catálogo de servicios/precios y pega URLs de fotos propias desde "Editar negocio";
+  el cliente las ve en la tarjeta. No se fabricaron fotos ni catálogos para los 30
+  negocios reales de Monterrey — arrancan vacíos (`photos: []`, mismo criterio que ya
+  regía las fotos — ver "Fotos de negocio" arriba) hasta que el negocio los llena.
+- **HU-16 — Descuentos en cupos de cancelación:** el negocio publica un cupo con %
+  de descuento; el cliente ve el precio original tachado, el precio final y un badge
+  "-X%".
+- **HU-17 — Elegir estilista/barbero:** el negocio da de alta a su personal desde
+  "Editar negocio" y lo asigna a un cupo al publicarlo; el cliente ve "con [nombre]".
+- **HU-06 — Reseñas de 1 a 5 estrellas:** solo quien ya reservó en ese negocio puede
+  dejar una reseña (una por cliente-negocio, se actualiza si deja otra); el promedio
+  y las reseñas recientes se muestran en la tarjeta del negocio.
+- **HU-11 (ajustada) — Favoritos + aviso de cupos nuevos:** el cliente marca
+  negocios favoritos y filtra "solo favoritos"; un banner avisa cuando un negocio
+  favorito publica o reabre un cupo desde la última vez que se revisó
+  (`createdAt`/`lastFavoritesCheck` en `js/store.js`). Es un aviso local dentro de la
+  misma sesión del navegador, no una notificación push real — por eso el equipo la
+  dejó "ajustada" en el Sprint 1 (la versión completa necesita una cuenta de servicio
+  de push, ver "Pendiente" abajo).
+
+Todo esto se construyó primero en `js/store.js` (localStorage) y se probó a fondo
+con Playwright (flujo completo cliente+negocio, descuentos, favoritos, reseñas,
+filtros, folio). Después se espejeó completo en `js/supabase-store.js` +
+`db/schema.sql`: tablas nuevas `staff`, `reviews`, `favorites`; columnas nuevas en
+`slots` (`original_price`, `discount_pct`, `staff_id`), `reservations`/`sales`
+(`folio`), `sales` (`client_id`), `clients` (`last_favorites_check`), `businesses`
+(`photos`, `services_catalog`); y funciones RPC nuevas (`generate_folio`,
+`add_review`, `has_reservation_at`, `get_my_sales`, `toggle_favorite`,
+`get_new_favorite_slots`, `touch_favorites_check`) — todas `security definer` para
+que las reglas (solo quien reservó puede reseñar, un cliente nunca ve las ventas de
+otro) se cumplan sin exponer de más vía RLS. Igual que el resto de Supabase, esto
+**no se probó contra un proyecto real** (ver "Sin probar en vivo" arriba) — sí se
+revisó a mano la lógica de RLS, en particular que el nombre de quien reservó sea
+visible para el negocio dueño del cupo (política extra en `clients`) y que las
+reseñas guarden `client_name` en la propia fila (no por join) para que no salgan en
+null por la política de RLS de `clients`.
+
 ## Enlaces
 
 - **Repo / rama de trabajo:** `feature/cupo-web-app` en
@@ -125,16 +183,30 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
 
 ## Pendiente / decisiones abiertas
 
+**Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
+que no se puede crear desde aquí) — pendiente a propósito para hacerlo juntos:**
+
+- **HU-08 — Pago dentro de la app:** hoy el cliente reserva gratis y paga en el
+  negocio (política de cancelación de HU-13). Cobrar en línea necesita elegir y
+  conectar un procesador de pagos real (Stripe, Conekta, Mercado Pago...), lo cual
+  requiere una cuenta tuya con datos fiscales/bancarios.
+- **HU-11 completa — notificaciones push reales:** lo construido (ver arriba) es un
+  aviso local dentro de la sesión del navegador; un push real que llegue aunque la
+  app esté cerrada necesita una cuenta de servicio de push (Firebase Cloud Messaging,
+  OneSignal, Web Push...).
+- **Fotos por subida de archivo real:** hoy el negocio pega una URL externa. Subir el
+  archivo directo desde el panel necesita Supabase Storage conectado (depende de que
+  actives Supabase — ver abajo).
 - Supabase está preparado pero no conectado — falta que alguien cree el proyecto y
   pegue las credenciales (ver "Base de datos: Supabase" arriba). Hasta entonces sigue
   en `localStorage`.
 - El flujo de Supabase no se ha probado contra un proyecto real todavía — probarlo
-  completo (registro, reserva, cancelación, RLS) en cuanto se conecte. Esto incluye la
-  tabla `sales` nueva y sus políticas RLS (ver "Dashboard de Ventas" arriba) — sí se
-  probó a fondo en modo localStorage con Playwright (seed, reserva en vivo, cancelación,
-  los tres filtros de período), pero no contra Postgres real.
-- `SupabaseStore.seedDemoBusinesses()` copia los cupos de hoy de los 30 negocios de
-  ejemplo (incluido su servicio), pero no replica su historial de ventas de
+  completo (registro, reserva, cancelación, RLS) en cuanto se conecte. Esto incluye
+  las tablas nuevas `sales`/`staff`/`reviews`/`favorites` y sus políticas RLS (ver
+  "Backlog ágil" y "Dashboard de Ventas" arriba) — sí se probó a fondo en modo
+  localStorage con Playwright, pero no contra Postgres real.
+- `SupabaseStore.seedDemoBusinesses()` copia los cupos de hoy y el catálogo de
+  servicios de los 30 negocios de ejemplo, pero no replica su historial de ventas de
   demostración — en Supabase el dashboard de Ventas arranca vacío hasta que entren
   reservas reales.
 - Se consideró un campo de "usuario" (@alias) en el registro de cliente, pero no se

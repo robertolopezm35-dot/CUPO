@@ -877,3 +877,198 @@ footer {
   background: #FEF2F2;
   color: var(--red);
 }
+
+/* DAY TABS / FILTERS (HU-09, HU-10) */
+.day-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+.day-tab {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--white);
+  border: 1.5px solid var(--gray-light);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+  white-space: nowrap;
+}
+.day-tab.active {
+  background: var(--indigo);
+  border-color: var(--indigo);
+  color: var(--white);
+}
+
+.filter-select {
+  padding: 11px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gray-light);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--navy);
+}
+.filter-select:focus { outline: none; border-color: var(--indigo); }
+
+/* FAVORITES (HU-11) */
+.favorites-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--indigo-light);
+  color: var(--indigo-dark);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fav-toggle {
+  background: var(--white);
+  border: 1.5px solid var(--gray-light);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray);
+  flex-shrink: 0;
+}
+.fav-toggle.active {
+  border-color: var(--red);
+  color: var(--red);
+  background: #FEF2F2;
+}
+
+/* POLICY NOTE / DISCOUNTS (HU-13, HU-16) */
+.policy-note {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--gray);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.discount-badge {
+  background: #FEF2F2;
+  color: var(--red);
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 4px;
+}
+
+/* PHOTO GALLERY / SERVICES CATALOG / REVIEWS (HU-02, HU-06) */
+.photo-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: -20px -20px 16px;
+  height: 110px;
+  overflow: hidden;
+}
+.photo-gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.catalog-details {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--gray-light);
+}
+.catalog-details summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--indigo-dark);
+}
+.catalog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gray-light);
+  font-size: 13.5px;
+}
+.catalog-row:last-child { border-bottom: none; }
+
+.review-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gray-light);
+  font-size: 13.5px;
+}
+.review-row:last-child { border-bottom: none; }
+.review-row .review-stars { color: var(--indigo); font-size: 12.5px; }
+.review-author {
+  color: var(--gray);
+  font-size: 12px;
+  display: block;
+  margin-top: 2px;
+}
+
+.star-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 28px;
+}
+.star-picker button {
+  background: none;
+  color: var(--gray-light);
+}
+.star-picker button.active {
+  color: var(--indigo);
+}
+
+.field textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--gray-light);
+  font-size: 14.5px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--navy);
+  resize: vertical;
+}
+.field textarea:focus {
+  outline: none;
+  border-color: var(--indigo);
+}
+
+/* NEGOCIO: editable rows (catálogo de servicios, personal) */
+.edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.edit-row input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--gray-light);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--navy);
+}
+.edit-row input:focus { outline: none; border-color: var(--indigo); }
+.edit-row input.svc-price { flex: 0 0 90px; }
+.edit-row .remove-row {
+  flex-shrink: 0;
+  font-size: 16px;
+  padding: 4px 8px;
+}

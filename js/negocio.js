@@ -34,10 +34,49 @@
     editCategorySelect.appendChild(opt);
   });
 
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  }
+
+  function addServiceRow(name, price) {
+    const container = document.getElementById("editServicesRows");
+    const row = document.createElement("div");
+    row.className = "edit-row";
+    row.innerHTML =
+      '<input type="text" class="svc-name" placeholder="Servicio" value="' + escapeAttr(name || "") + '">' +
+      '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price || "") + '">' +
+      '<button type="button" class="btn-link-danger remove-row">✕</button>';
+    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
+    container.appendChild(row);
+  }
+
+  function addStaffRow(name, id) {
+    const container = document.getElementById("editStaffRows");
+    const row = document.createElement("div");
+    row.className = "edit-row";
+    row.dataset.staffId = id || ("ST-" + Math.random().toString(36).slice(2, 8));
+    row.innerHTML =
+      '<input type="text" class="staff-name" placeholder="Nombre" value="' + escapeAttr(name || "") + '">' +
+      '<button type="button" class="btn-link-danger remove-row">✕</button>';
+    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
+    container.appendChild(row);
+  }
+
+  document.getElementById("addServiceRowBtn").addEventListener("click", () => addServiceRow("", ""));
+  document.getElementById("addStaffRowBtn").addEventListener("click", () => addStaffRow("", ""));
+
   document.getElementById("editProfileBtn").addEventListener("click", () => {
     document.getElementById("editName").value = business.name;
     document.getElementById("editCategory").value = business.category;
     document.getElementById("editAddress").value = business.address;
+    document.getElementById("editPhotos").value = (business.photos || []).join("\n");
+
+    document.getElementById("editServicesRows").innerHTML = "";
+    (business.servicesCatalog || []).forEach((s) => addServiceRow(s.name, s.price));
+
+    document.getElementById("editStaffRows").innerHTML = "";
+    (business.staff || []).forEach((s) => addStaffRow(s.name, s.id));
+
     editModal.classList.add("show");
   });
 
@@ -50,7 +89,21 @@
     const category = document.getElementById("editCategory").value;
     const address = document.getElementById("editAddress").value.trim();
     if (!name || !address) return;
-    await DataStore.updateBusiness(business.id, { name, category, address });
+
+    const photos = document.getElementById("editPhotos").value
+      .split("\n").map((s) => s.trim()).filter(Boolean);
+
+    const servicesCatalog = Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => ({
+      name: row.querySelector(".svc-name").value.trim(),
+      price: parseInt(row.querySelector(".svc-price").value, 10) || 0,
+    })).filter((s) => s.name);
+
+    const staff = Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => ({
+      id: row.dataset.staffId,
+      name: row.querySelector(".staff-name").value.trim(),
+    })).filter((s) => s.name);
+
+    await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
     editModal.classList.remove("show");
     showToast("Perfil actualizado.");
     await render();
@@ -77,6 +130,30 @@
     serviceSelect.appendChild(opt);
   });
 
+  const dayOffsetSelect = document.getElementById("newDayOffset");
+  for (let i = 0; i <= 6; i++) {
+    const opt = document.createElement("option");
+    opt.value = i;
+    if (i === 0) opt.textContent = "Hoy";
+    else if (i === 1) opt.textContent = "Mañana";
+    else {
+      const wd = new Date(Date.now() + i * 86400000).toLocaleDateString("es-MX", { weekday: "short" });
+      opt.textContent = wd.charAt(0).toUpperCase() + wd.slice(1);
+    }
+    dayOffsetSelect.appendChild(opt);
+  }
+
+  function renderStaffOptions() {
+    const staffSelect = document.getElementById("newStaff");
+    staffSelect.innerHTML = '<option value="">Sin preferencia</option>';
+    (business.staff || []).forEach((st) => {
+      const opt = document.createElement("option");
+      opt.value = st.id;
+      opt.textContent = st.name;
+      staffSelect.appendChild(opt);
+    });
+  }
+
   function showToast(msg) {
     const toast = document.getElementById("toast");
     toast.textContent = msg;
@@ -86,6 +163,7 @@
 
   async function render() {
     business = await getBusiness();
+    renderStaffOptions();
     const slots = business.slots.slice().sort((a, b) => a.time - b.time);
 
     const available = slots.filter((s) => s.status === "available");
@@ -100,13 +178,20 @@
     if (!slots.length) {
       slotList.innerHTML = '<span style="color:var(--gray);font-size:13.5px">Aún no has publicado horarios. Agrega uno abajo.</span>';
     } else {
+      const todayStart = DataStore.startOfDay(Date.now());
       slotList.innerHTML = slots.map((s) => {
         const cls = s.status === "available" ? "available" : "mine";
         const sub = s.status === "available" ? "Disponible" : (s.clientName || "Reservado");
+        const sameDay = DataStore.startOfDay(s.time) === todayStart;
+        const dateStr = sameDay ? "" : new Date(s.time).toLocaleDateString("es-MX", { weekday: "short", day: "numeric" }) + " ";
+        const priceHtml = s.discountPct > 0
+          ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
+          : `<span class="price">$${s.price}</span>`;
         return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ${s.status === 'available' ? 'quitar' : 'reabrir (cancelación)'}">
-          <span class="time">${s.label}</span>
+          <span class="time">${dateStr}${s.label}</span>
           ${s.service ? `<span class="price">${s.service}</span>` : ""}
-          <span class="price">$${s.price}</span>
+          ${priceHtml}
+          ${s.staffName ? `<span class="price">${s.staffName}</span>` : ""}
           <span class="price">${sub}</span>
         </div>`;
       }).join("");
@@ -133,7 +218,7 @@
     } else {
       bookingsList.innerHTML = '<div class="biz-card">' + booked.map((s) =>
         `<div class="reservation-row">
-          <span>${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}</span>
+          <span>${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}${s.staffName ? " · " + s.staffName : ""}</span>
           <strong>$${s.price}</strong>
         </div>`
       ).join("") + '</div>';
@@ -145,7 +230,10 @@
     const duration = document.getElementById("newDuration").value;
     const price = document.getElementById("newPrice").value;
     const service = serviceSelect.value;
-    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service });
+    const dayOffset = dayOffsetSelect.value;
+    const discountPct = document.getElementById("newDiscount").value;
+    const staffId = document.getElementById("newStaff").value;
+    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service, dayOffset, discountPct, staffId });
     showToast("Cupo publicado.");
     await render();
   });
