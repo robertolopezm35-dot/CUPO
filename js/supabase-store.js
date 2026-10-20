@@ -321,19 +321,25 @@ const SupabaseStore = (() => {
       // Reemplaza la lista completa: borra los que ya no están, actualiza
       // los que siguen y da de alta los nuevos (llegan con un id local
       // temporal tipo "ST-xxxxx" que no existe en la tabla, así que se
-      // insertan sin id y Postgres genera el real).
-      const { data: existing } = await client.from("staff").select("id").eq("business_id", businessId);
+      // insertan sin id y Postgres genera el real). Cada operación se
+      // revisa por separado — si una falla a medias, el negocio debe
+      // enterarse en vez de ver "Perfil actualizado" con datos a medias.
+      const { data: existing, error: selectError } = await client.from("staff").select("id").eq("business_id", businessId);
+      if (selectError) return { ok: false, error: selectError.message };
       const existingIds = (existing || []).map((s) => s.id);
       const keepIds = staff.map((s) => s.id).filter((id) => existingIds.includes(id));
       const toDelete = existingIds.filter((id) => !keepIds.includes(id));
       if (toDelete.length) {
-        await client.from("staff").delete().in("id", toDelete);
+        const { error: delError } = await client.from("staff").delete().in("id", toDelete);
+        if (delError) return { ok: false, error: delError.message };
       }
       for (const s of staff) {
         if (existingIds.includes(s.id)) {
-          await client.from("staff").update({ name: s.name }).eq("id", s.id);
+          const { error: updError } = await client.from("staff").update({ name: s.name }).eq("id", s.id);
+          if (updError) return { ok: false, error: updError.message };
         } else {
-          await client.from("staff").insert({ business_id: businessId, name: s.name });
+          const { error: insError } = await client.from("staff").insert({ business_id: businessId, name: s.name });
+          if (insError) return { ok: false, error: insError.message };
         }
       }
     }

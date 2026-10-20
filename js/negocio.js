@@ -103,7 +103,11 @@
       name: row.querySelector(".staff-name").value.trim(),
     })).filter((s) => s.name);
 
-    await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
+    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
+      return;
+    }
     editModal.classList.remove("show");
     showToast("Perfil actualizado.");
     await render();
