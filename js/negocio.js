@@ -344,6 +344,25 @@
         </div>`
       ).join("") + '</div>';
     }
+
+    // Citas ya atendidas (cupos reservados con fecha anterior a hoy). Es
+    // solo un recordatorio visual — el detalle de ventas/cancelaciones
+    // vive en el dashboard de Ventas, que lee de la tabla sales.
+    const pastBooked = business.slots
+      .filter((s) => s.time < todayStart && s.status === "booked")
+      .sort((a, b) => b.time - a.time);
+    const pastAppointmentsList = document.getElementById("pastAppointmentsList");
+    if (!pastBooked.length) {
+      pastAppointmentsList.innerHTML = '<div class="empty-state">Todavía no tienes citas pasadas.</div>';
+    } else {
+      pastAppointmentsList.innerHTML = '<div class="biz-card">' + pastBooked.map((s) => {
+        const dateStr = new Date(s.time).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
+        return `<div class="reservation-row">
+          <span>${dateStr} · ${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}${s.staffName ? " · " + s.staffName : ""}</span>
+          <strong>$${s.price}</strong>
+        </div>`;
+      }).join("") + '</div>';
+    }
   }
 
   const addSlotBtn = document.getElementById("addSlotBtn");
