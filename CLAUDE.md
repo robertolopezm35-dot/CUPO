@@ -58,7 +58,7 @@ cuenta):
 4. Copia *Project Settings → API → Project URL* y la *anon public key*, y pégalas en
    `js/supabase-config.js`.
 5. Listo — la app ya habla con Postgres, sin tocar ningún otro archivo.
-6. Opcional: para tener los mismos 30 negocios de ejemplo de Monterrey en la base real
+6. Opcional: para tener los mismos 48 negocios de ejemplo de Monterrey en la base real
    (en vez de empezar vacía), abre la consola del navegador en cualquier página del
    sitio ya conectado y corre `await SupabaseStore.seedDemoBusinesses()` una sola vez.
 
@@ -83,9 +83,12 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
 - **Categorías organizadas en Áreas → Subcategorías:**
   - Área **Estética** (activa): Barbería, Salón, Spa, Uñas, Maquillaje, Estética facial.
   - Área **Doctores** (marcada "Próximamente" — sin negocios todavía, solo panel de aviso).
-- **Datos semilla:** 30 negocios reales de Monterrey (5 por subcategoría de Estética),
-  investigados por web search — nombres y zonas reales, pero horarios/precios/logins
-  (`nombre@cupo.mx` / `1234`) son datos de demo, no contacto real de esos negocios.
+- **Datos semilla:** 48 negocios reales de Monterrey (8 por subcategoría de Estética —
+  30 originales + 18 agregados después para que el buscador y el orden por cercanía
+  tuvieran más con qué demostrarse, repartidos en zonas nuevas como San Nicolás de los
+  Garza y General Escobedo), investigados por web search — nombres y zonas reales,
+  pero horarios/precios/logins (`nombre@cupo.mx` / `1234`) son datos de demo, no
+  contacto real de esos negocios.
 - **Patente más parecida encontrada:** US20220414607A1 (gestión de citas/reasignación de
   cancelaciones/notificaciones). Diferencia de CUPO: sincroniza *varios* negocios a la
   vez y notifica por geolocalización al cliente más cercano.
@@ -110,7 +113,7 @@ flujo completo (registro, reservar, cancelar) apenas conectes tu proyecto.
   largo), **facturación por franja horaria** y **servicios más vendidos** — las tres
   métricas que Bewe realmente expone en sus reportes según su propio blog/documentación
   pública (investigado por web search, no inventado). Para que el dashboard no se vea
-  vacío, los 30 negocios semilla traen ~20-35 ventas de demostración de los últimos 30
+  vacío, los 48 negocios semilla traen ~20-35 ventas de demostración de los últimos 30
   días generadas por código (`seedSales` en `js/store.js`) — nombres de clientes
   genéricos, igual de "demo" que los logins `nombre@cupo.mx` / `1234`.
 
@@ -136,7 +139,7 @@ externo, se implementaron:
   publicar un cupo.
 - **HU-02 — Catálogo de servicios y fotos en el perfil:** el negocio edita su
   catálogo de servicios/precios y pega URLs de fotos propias desde "Editar negocio";
-  el cliente las ve en la tarjeta. No se fabricaron fotos ni catálogos para los 30
+  el cliente las ve en la tarjeta. No se fabricaron fotos ni catálogos para los 48
   negocios reales de Monterrey — arrancan vacíos (`photos: []`, mismo criterio que ya
   regía las fotos — ver "Fotos de negocio" arriba) hasta que el negocio los llena.
 - **HU-16 — Descuentos en cupos de cancelación:** el negocio publica un cupo con %
@@ -192,7 +195,7 @@ pero no se reportaban en ningún lado:
   vendidos") agrupando ventas por el estilista/personal asignado al cupo (HU-17).
   Solo aparece si el negocio tiene al menos un colaborador dado de alta — para no
   mostrar una gráfica vacía en los negocios que no usan esa función (la mayoría de
-  los 30 negocios semilla, que arrancan sin personal — ver "Fotos de negocio" arriba).
+  los 48 negocios semilla, que arrancan sin personal — ver "Fotos de negocio" arriba).
 
 Para que estas dos últimas funcionen, cada venta ahora guarda una copia de
 `discount_pct`/`original_price`/`staff_name` del cupo al momento de reservarlo (antes
@@ -259,7 +262,7 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
   "Backlog ágil" y "Dashboard de Ventas" arriba) — sí se probó a fondo en modo
   localStorage con Playwright, pero no contra Postgres real.
 - `SupabaseStore.seedDemoBusinesses()` copia los cupos de hoy y el catálogo de
-  servicios de los 30 negocios de ejemplo, pero no replica su historial de ventas de
+  servicios de los 48 negocios de ejemplo, pero no replica su historial de ventas de
   demostración — en Supabase el dashboard de Ventas arranca vacío hasta que entren
   reservas reales.
 - Se consideró un campo de "usuario" (@alias) en el registro de cliente, pero no se

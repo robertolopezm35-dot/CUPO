@@ -441,6 +441,36 @@ const CupoStore = (() => {
       { id: "b28", name: "Dra. Gina González Beyou", category: "Estética facial", address: "Monterrey", lat: 25.6550, lng: -100.3550, email: "drginagonzalez@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 9, 3, 1200) },
       { id: "b29", name: "Dra. Sindy Sánchez", category: "Estética facial", address: "Plaza Mirador, Guadalupe", lat: 25.6773, lng: -100.2597, email: "drasindysanchez@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Estética facial", 13, 3, 1150) },
       { id: "b30", name: "JOSSCLAUDE & BeLLVeR", category: "Estética facial", address: "Monterrey", lat: 25.6700, lng: -100.3200, email: "jossclaude@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 15, 3, 850) },
+
+      // Más barberías (zonas nuevas para variar distancias en el buscador)
+      { id: "b31", name: "Fígaro Barbería", category: "Barbería", address: "Plaza Villa Obispado, Col. Obispado, Monterrey", lat: 25.6723, lng: -100.3434, email: "figaro@cupo.mx", password: "1234", rating: 5.0, ...bizSeed("Barbería", 15, 4, 190) },
+      { id: "b32", name: "Mediodiablo Barbería", category: "Barbería", address: "Hidalgo, Centro, Monterrey", lat: 25.6692, lng: -100.3089, email: "mediodiablo@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Barbería", 13, 4, 175) },
+      { id: "b33", name: "Lumineer Barber", category: "Barbería", address: "Plaza del Lago, San Nicolás de los Garza", lat: 25.7325, lng: -100.2881, email: "lumineer@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Barbería", 16, 3, 195) },
+
+      // Más salones
+      { id: "b34", name: "Tribeca Hair Studio", category: "Salón", address: "Cumbres, Monterrey", lat: 25.7600, lng: -100.3550, email: "tribeca@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Salón", 12, 3, 290) },
+      { id: "b35", name: "Lorenzzo Salón", category: "Salón", address: "Gonzalitos, Monterrey", lat: 25.6950, lng: -100.3550, email: "lorenzzo@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Salón", 14, 3, 310) },
+      { id: "b36", name: "Santacruz Estilistas", category: "Salón", address: "Lázaro Garza Ayala, Casco Urbano, San Pedro Garza García", lat: 25.6580, lng: -100.4030, email: "santacruz@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Salón", 11, 4, 270) },
+
+      // Más spas
+      { id: "b37", name: "Kinesis Spa", category: "Spa", address: "Río Mississippi 116, Col. Del Valle, San Pedro Garza García", lat: 25.6480, lng: -100.3630, email: "kinesis@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Spa", 10, 3, 1000) },
+      { id: "b38", name: "DO SPA San Pedro", category: "Spa", address: "Col. Del Valle, San Pedro Garza García", lat: 25.6460, lng: -100.3650, email: "dospa@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Spa", 9, 3, 1050) },
+      { id: "b39", name: "Feel Urban Spa", category: "Spa", address: "Live Aqua Urban Resort, Valle Oriente, Monterrey", lat: 25.6420, lng: -100.3330, email: "feelurban@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Spa", 11, 3, 1400) },
+
+      // Más uñas
+      { id: "b40", name: "Nuova Vita Nail Spa", category: "Uñas", address: "Plaza Villa Obispado, Francisco Garza Sada 2940, Monterrey", lat: 25.6730, lng: -100.3440, email: "nuovavita@cupo.mx", password: "1234", rating: 5.0, ...bizSeed("Uñas", 11, 4, 270) },
+      { id: "b41", name: "Zela San Pedro", category: "Uñas", address: "Col. Del Valle, San Pedro Garza García", lat: 25.6500, lng: -100.3600, email: "zela@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Uñas", 10, 4, 290) },
+      { id: "b42", name: "Nube de Rosa", category: "Uñas", address: "Col. Del Valle, San Pedro Garza García", lat: 25.6510, lng: -100.3580, email: "nubederosa@cupo.mx", password: "1234", rating: 4.9, ...bizSeed("Uñas", 12, 4, 280) },
+
+      // Más maquillaje
+      { id: "b43", name: "María Alejandra Yáñez Makeup Artist", category: "Maquillaje", address: "San Pedro Garza García", lat: 25.6530, lng: -100.3680, email: "mariaalejandray@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Maquillaje", 10, 3, 650) },
+      { id: "b44", name: "Idi Coello Makeup Artist", category: "Maquillaje", address: "San Nicolás de los Garza", lat: 25.7400, lng: -100.2850, email: "idicoello@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Maquillaje", 12, 3, 600) },
+      { id: "b45", name: "Karen Gtz Makeup", category: "Maquillaje", address: "Monterrey", lat: 25.6745, lng: -100.3060, email: "karengtz@cupo.mx", password: "1234", rating: 4.5, ...bizSeed("Maquillaje", 15, 3, 580) },
+
+      // Más estética facial
+      { id: "b46", name: "Clínica Dermassad", category: "Estética facial", address: "San Pedro Garza García", lat: 25.6500, lng: -100.3750, email: "dermassad@cupo.mx", password: "1234", rating: 4.8, ...bizSeed("Estética facial", 10, 3, 1100) },
+      { id: "b47", name: "Medipiel Dermatology, Cosmetic and Laser Clinic", category: "Estética facial", address: "Monterrey", lat: 25.6640, lng: -100.3270, email: "medipiel@cupo.mx", password: "1234", rating: 4.7, ...bizSeed("Estética facial", 9, 3, 1000) },
+      { id: "b48", name: "Aesthetic Derma", category: "Estética facial", address: "General Escobedo", lat: 25.7961, lng: -100.3167, email: "aestheticderma@cupo.mx", password: "1234", rating: 4.6, ...bizSeed("Estética facial", 11, 3, 950) },
     ].map((b) => ({
       ...b,
       reviews: seedReviews(b.rating),

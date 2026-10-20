@@ -419,7 +419,7 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
-  // Crea, con signUp() real, los 30 negocios de ejemplo de Monterrey que
+  // Crea, con signUp() real, los negocios de ejemplo de Monterrey que
   // el prototipo usa en localStorage. Solo hace falta correrlo una vez,
   // a mano, desde la consola del navegador (no se llama solo):
   //   await SupabaseStore.seedDemoBusinesses()
@@ -429,7 +429,7 @@ const SupabaseStore = (() => {
   // que entren reservas reales.
   async function seedDemoBusinesses() {
     if (!client) throw new Error("Configura js/supabase-config.js primero.");
-    const seed = CupoStore.getBusinesses(); // localStorage ya trae los 30 de ejemplo
+    const seed = CupoStore.getBusinesses(); // localStorage ya trae los negocios de ejemplo
     let created = 0;
     for (const b of seed) {
       const result = await registerBusiness({
