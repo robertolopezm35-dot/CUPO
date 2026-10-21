@@ -34,8 +34,18 @@
     editCategorySelect.appendChild(opt);
   });
 
-  function escapeAttr(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  // Escapa texto controlado por clientes (nombre, estilista asignado) antes
+  // de insertarlo en innerHTML o en un atributo — sin esto, el nombre de
+  // cualquier cliente que reserve se ejecuta como script en la pantalla del
+  // negocio (XSS almacenado). Cualquiera puede registrarse como cliente con
+  // el nombre que quiera, así que esto no es opcional.
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function addServiceRow(name, price) {
@@ -43,7 +53,7 @@
     const row = document.createElement("div");
     row.className = "edit-row";
     row.innerHTML =
-      '<input type="text" class="svc-name" placeholder="Servicio" value="' + escapeAttr(name || "") + '">' +
+      '<input type="text" class="svc-name" placeholder="Servicio" value="' + esc(name || "") + '">' +
       '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price || "") + '">' +
       '<button type="button" class="btn-link-danger remove-row">✕</button>';
     row.querySelector(".remove-row").addEventListener("click", () => row.remove());
@@ -56,7 +66,7 @@
     row.className = "edit-row";
     row.dataset.staffId = id || ("ST-" + Math.random().toString(36).slice(2, 8));
     row.innerHTML =
-      '<input type="text" class="staff-name" placeholder="Nombre" value="' + escapeAttr(name || "") + '">' +
+      '<input type="text" class="staff-name" placeholder="Nombre" value="' + esc(name || "") + '">' +
       '<button type="button" class="btn-link-danger remove-row">✕</button>';
     row.querySelector(".remove-row").addEventListener("click", () => row.remove());
     container.appendChild(row);
@@ -321,10 +331,10 @@
           : `<span class="price">$${s.price}</span>`;
         return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ver detalles">
           <span class="time">${dateStr}${s.label}</span>
-          ${s.service ? `<span class="price">${s.service}</span>` : ""}
+          ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
           ${priceHtml}
-          ${s.staffName ? `<span class="price">${s.staffName}</span>` : ""}
-          <span class="price">${sub}</span>
+          ${s.staffName ? `<span class="price">${esc(s.staffName)}</span>` : ""}
+          <span class="price">${esc(sub)}</span>
         </div>`;
       }).join("");
     }
@@ -339,7 +349,7 @@
     } else {
       bookingsList.innerHTML = '<div class="biz-card">' + booked.map((s) =>
         `<div class="reservation-row">
-          <span>${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}${s.staffName ? " · " + s.staffName : ""}</span>
+          <span>${esc(s.clientName)} · ${s.service ? esc(s.service) + " · " : ""}${s.label}${s.staffName ? " · " + esc(s.staffName) : ""}</span>
           <strong>$${s.price}</strong>
         </div>`
       ).join("") + '</div>';
@@ -358,7 +368,7 @@
       pastAppointmentsList.innerHTML = '<div class="biz-card">' + pastBooked.map((s) => {
         const dateStr = new Date(s.time).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
         return `<div class="reservation-row">
-          <span>${dateStr} · ${s.clientName} · ${s.service ? s.service + " · " : ""}${s.label}${s.staffName ? " · " + s.staffName : ""}</span>
+          <span>${dateStr} · ${esc(s.clientName)} · ${s.service ? esc(s.service) + " · " : ""}${s.label}${s.staffName ? " · " + esc(s.staffName) : ""}</span>
           <strong>$${s.price}</strong>
         </div>`;
       }).join("") + '</div>';
@@ -382,4 +392,13 @@
   });
 
   await render();
+
+  // Igual que en el panel del cliente: si reservan un cupo desde otro
+  // dispositivo mientras el negocio tiene la agenda abierta, que se entere
+  // sin recargar. Se salta el ciclo si hay un modal de edición abierto.
+  setInterval(async () => {
+    if (document.hidden) return;
+    if (slotDetailModal.classList.contains("show") || editModal.classList.contains("show")) return;
+    await render();
+  }, 20000);
 })();

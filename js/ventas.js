@@ -26,6 +26,19 @@
   const MONEY = (n) => "$" + Math.round(n).toLocaleString("es-MX");
   const DAY_MS = 86400000;
 
+  // Escapa nombre de cliente/colaborador antes de insertarlo en innerHTML —
+  // cualquiera puede registrarse como cliente con el nombre que quiera, así
+  // que sin esto una venta con nombre malicioso ejecuta HTML/script en el
+  // dashboard del negocio (XSS almacenado).
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function startOfDay(ts) {
     const d = new Date(ts);
     d.setHours(0, 0, 0, 0);
@@ -171,7 +184,7 @@
     }
     container.innerHTML = rows.map((r) => `
       <div class="rank-row">
-        <span class="rank-name">${r.name}</span>
+        <span class="rank-name">${esc(r.name)}</span>
         <span class="rank-count">${r.count} venta${r.count === 1 ? "" : "s"}</span>
         <span class="rank-amount">${MONEY(r.amount)}</span>
       </div>
@@ -217,8 +230,8 @@
       const cancelled = s.status === "cancelada";
       return `<div class="sale-row ${cancelled ? "cancelada" : ""}">
         <div class="sale-info">
-          <span class="sale-service">${s.service || "Servicio"}</span>
-          <span class="sale-meta">${dt} · ${s.clientName || "Cliente"}</span>
+          <span class="sale-service">${esc(s.service || "Servicio")}</span>
+          <span class="sale-meta">${dt} · ${esc(s.clientName || "Cliente")}</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           ${cancelled ? '<span class="sale-badge">Cancelada</span>' : ""}

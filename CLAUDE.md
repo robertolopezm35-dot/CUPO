@@ -228,6 +228,69 @@ mano para verificar los cálculos exactos de tendencia, tasa de cancelación, in
 descuentos y ranking por colaborador) — no contra Supabase real, igual que el resto de
 cambios de esquema de este proyecto (ver "Sin probar en vivo" arriba).
 
+## Ronda de bugs y mejoras de UX
+
+Se hizo una revisión completa de `cliente.js`/`negocio.js`/`auth.js`/`ventas.js` buscando
+bugs reales y comparando contra patrones de plataformas como Booksy/Fresha, Booking.com y
+Uber/DoorDash. Se encontraron y corrigieron:
+
+- **XSS almacenado (bug de seguridad, el más serio):** el nombre del negocio, su
+  dirección, catálogo de servicios, personal, URLs de fotos, y — el vector más grave —
+  el nombre de cualquier cliente y el texto de sus reseñas, se insertaban sin escapar
+  vía `innerHTML`/atributos en `cliente.js`, `negocio.js` y `ventas.js`. Cualquiera
+  puede registrarse como cliente con el nombre que quiera o dejar una reseña con
+  cualquier texto, así que sin esto un nombre o reseña con `<img onerror=...>` se
+  ejecutaba como script en la pantalla de cualquiera que la viera — incluyendo al
+  negocio dueño del cupo reservado, y a todos los clientes que vieran esa reseña en la
+  tarjeta del negocio. Se agregó una función `esc()` (local en cada uno de los tres
+  archivos) y se aplicó a todo texto libre antes de insertarlo en el DOM. Verificado
+  con Playwright inyectando payloads reales (`<img src=x onerror=alert(1)>` como
+  nombre de cliente y como comentario de reseña) y confirmando que no se ejecuta
+  ningún diálogo/script y que el texto se ve escapado en `cliente.html`, `negocio.html`
+  y `ventas.html`.
+- **El registro de negocio nuevo no dejaba elegir Uñas ni Maquillaje:** `auth.html`
+  traía un `<select>` de categoría fijo en el HTML (Barbería/Salón/Spa/**Estética**) —
+  "Estética" no es una categoría válida, es el nombre del *área* que las agrupa a
+  todas. Un negocio que la elegía quedaba con `category: "Estética"` sin validación
+  (`registerBusiness` guarda lo que le llega, no valida contra una lista), lo cual lo
+  hacía **invisible en todos los filtros del panel de cliente** (`area.categories
+  .includes(b.category)` nunca es cierto para ese valor) — y de las 6 categorías reales
+  solo 3 estaban en la lista. Se corrigió poblando el `<select>` por JS desde
+  `DataStore.CATEGORIES`, la misma fuente que ya usa el negocio para editar su perfil
+  después de registrado.
+- **Un cupo "fantasma" tras perder la carrera por reservarlo:** si dos clientes
+  intentaban reservar el mismo cupo casi al mismo tiempo, el que perdía solo veía un
+  toast de error pero la lista no se refrescaba — el cupo seguía viéndose
+  "disponible" y podía volver a fallar al intentarlo de nuevo. Se agregó
+  `renderBusinesses()` también en la rama de error de `bookSlot`.
+- **Sin protección de doble-submit en login/registro:** a diferencia del resto de
+  botones async de la app (que ya se corrigieron antes esta sesión), los 4
+  formularios de `auth.html` no deshabilitaban su botón mientras esperaban la
+  respuesta — un doble clic podía disparar dos registros/logins a la vez. Se agregó
+  el mismo guard (`disabled` + texto "Un momento...") usado en el resto de la app.
+- **Autocomplete en los campos de auth.html:** se agregaron los atributos
+  `autocomplete` estándar (`email`, `new-password`, `current-password`,
+  `given-name`/`family-name`, etc.) — sin ellos, los gestores de contraseñas del
+  navegador no pueden ofrecer autocompletar/guardar en estos formularios, algo que
+  cualquier plataforma trae por default.
+- **"Auto-refresh" silencioso (inspirado en cómo Uber/DoorDash muestran su
+  inventario en vivo):** CLAUDE.md ya prometía "tiempo real" como una de las razones
+  para elegir Supabase, pero ni `cliente.html` ni `negocio.html` se actualizaban
+  solas — si otro cliente reservaba un cupo, o el negocio publicaba uno nuevo,
+  había que recargar la página a mano para enterarse. Se agregó un refresco
+  silencioso cada 20 segundos en ambos paneles (sin tocar la UI si hay un modal
+  abierto o el cliente está escribiendo en el buscador, para no interrumpir).
+- **Badge de escasez tipo Booking.com ("¡Solo queda 1!"):** cuando a un negocio le
+  quedan 1 o 2 cupos disponibles ese día, la tarjeta ahora lo muestra con un badge
+  ámbar junto a la categoría — refuerza justo la propuesta de valor de CUPO (cupos
+  de último momento que se pueden acabar), el mismo patrón de urgencia que usan
+  Booking.com/Airbnb con su disponibilidad.
+
+Todo se probó con Playwright en modo localStorage: registro con nombre malicioso,
+reseña con payload XSS, categorías del registro de negocio, doble-submit, una
+reserva que pierde la carrera contra otro cliente, y el badge de escasez con un
+negocio con exactamente 1 cupo — los 6 casos pasaron.
+
 ## Enlaces
 
 - **Repo / rama de trabajo:** `feature/cupo-web-app` en

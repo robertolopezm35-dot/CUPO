@@ -164,6 +164,19 @@
     setTimeout(() => toast.classList.remove("show"), 2200);
   }
 
+  // Escapa cualquier texto controlado por negocios/clientes (nombre, dirección,
+  // catálogo, personal, reseñas, URLs de foto) antes de insertarlo en innerHTML
+  // o en un atributo — sin esto, un nombre o reseña con HTML se ejecuta como
+  // script en la pantalla de cualquiera que vea esa tarjeta (XSS almacenado).
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function hashStr(s) {
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -311,6 +324,13 @@
 
     list.innerHTML = businesses.map((b) => {
       const slotsForDay = b.visibleSlots;
+      // Igual que "Solo quedan 2 habitaciones" en Booking.com — refuerza que
+      // estos son cupos de último momento que se pueden acabar, no un
+      // catálogo fijo. Solo se muestra cuando de verdad quedan pocos.
+      const availableCount = slotsForDay.filter((s) => s.status === "available").length;
+      const urgencyHtml = availableCount > 0 && availableCount <= 2
+        ? `<span class="urgency-badge">¡Solo queda${availableCount === 1 ? "" : "n"} ${availableCount}!</span>`
+        : "";
       const slotsHtml = slotsForDay.length
         ? slotsForDay.map((s) => {
             const cls = s.status === "available" ? "available" : "booked";
@@ -319,9 +339,9 @@
               : `<span class="price">$${s.price}${s.status === "booked" ? " · ocupado" : ""}</span>`;
             return `<div class="slot ${cls}" data-business="${b.id}" data-slot="${s.id}">
               <span class="time">${s.label}</span>
-              ${s.service ? `<span class="price">${s.service}</span>` : ""}
+              ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
               <span class="price">${s.duration} min</span>
-              ${s.staffName ? `<span class="price">con ${s.staffName}</span>` : ""}
+              ${s.staffName ? `<span class="price">con ${esc(s.staffName)}</span>` : ""}
               ${priceHtml}
             </div>`;
           }).join("")
@@ -336,36 +356,37 @@
       const eligibleForReview = (b.sales || []).some((v) => v.clientId === client.id);
 
       const photoHtml = b.photos && b.photos.length
-        ? `<div class="photo-gallery" data-fallback-emoji="${photo.emoji}" data-fallback-css="${photo.css.replace(/"/g, "&quot;")}">${b.photos.slice(0, 5).map((url) => `<img src="${url}" alt="Foto de ${b.name}" onerror="window.__cupoPhotoError(this)">`).join("")}</div>`
+        ? `<div class="photo-gallery" data-fallback-emoji="${photo.emoji}" data-fallback-css="${photo.css.replace(/"/g, "&quot;")}">${b.photos.slice(0, 5).map((url) => `<img src="${esc(url)}" alt="Foto de ${esc(b.name)}" onerror="window.__cupoPhotoError(this)">`).join("")}</div>`
         : `<div class="biz-photo" style="background:${photo.css}"><span class="photo-icon">${photo.emoji}</span></div>`;
 
       const catalogHtml = b.servicesCatalog && b.servicesCatalog.length
         ? `<details class="catalog-details">
             <summary>Servicios y precios (${b.servicesCatalog.length})</summary>
-            ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${s.name}</span><span>$${s.price}</span></div>`).join("")}
+            ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${s.price}</span></div>`).join("")}
           </details>`
         : "";
 
       const recentReviews = (b.reviews || []).slice(0, 2);
       const reviewsHtml = `<details class="catalog-details">
           <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
-          ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + r.comment : ""} <span class="review-author">· ${r.clientName}</span></div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
-          ${eligibleForReview ? `<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" data-review-business="${b.id}" data-review-name="${b.name}">Dejar reseña</button>` : ""}
+          ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span></div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
+          ${eligibleForReview ? `<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" data-review-business="${b.id}" data-review-name="${esc(b.name)}">Dejar reseña</button>` : ""}
         </details>`;
 
       return `<div class="biz-card">
         ${photoHtml}
         <div class="biz-head">
           <div>
-            <p class="biz-name">${b.name}</p>
+            <p class="biz-name">${esc(b.name)}</p>
             <div class="biz-meta">
-              <span>${b.address}</span>
+              <span>${esc(b.address)}</span>
               <span>★ ${rating.value.toFixed(1)}</span>
               ${distanceHtml}
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-            <span class="badge">${b.category}</span>
+            <span class="badge">${esc(b.category)}</span>
+            ${urgencyHtml}
             <button type="button" class="fav-toggle ${isFavorite ? "active" : ""}" data-fav="${b.id}" title="Favorito">${isFavorite ? "♥" : "♡"}</button>
           </div>
         </div>
@@ -388,8 +409,12 @@
             const result = await DataStore.bookSlot(businessId, slotId, client);
             if (!result.ok) {
               showToast(result.error);
+              // Alguien más pudo haberse quedado con el cupo justo antes —
+              // refresca para que deje de verse "disponible" y el cliente
+              // no vuelva a intentar reservar algo que ya no existe.
+              await renderBusinesses();
             } else {
-              folioText.innerHTML = `<strong>Folio: ${result.folio}</strong><br>${business.name} · ${slot.label}${slot.service ? " · " + slot.service : ""}.<br>Muestra este folio al llegar. Pagas en el negocio.`;
+              folioText.innerHTML = `<strong>Folio: ${esc(result.folio)}</strong><br>${esc(business.name)} · ${slot.label}${slot.service ? " · " + esc(slot.service) : ""}.<br>Muestra este folio al llegar. Pagas en el negocio.`;
               folioModal.classList.add("show");
               await renderBusinesses();
               await renderReservations();
@@ -475,12 +500,12 @@
     el.innerHTML = '<div class="biz-card">' + reservations.map((r) =>
       `<div class="reservation-row">
         <div class="res-info">
-          <span>${r.businessName} · ${r.service ? r.service + " · " : ""}${r.label}${r.staffName ? " · con " + r.staffName : ""}</span>
-          ${r.folio ? `<span class="review-author">Folio: ${r.folio}</span>` : ""}
+          <span>${esc(r.businessName)} · ${r.service ? esc(r.service) + " · " : ""}${r.label}${r.staffName ? " · con " + esc(r.staffName) : ""}</span>
+          ${r.folio ? `<span class="review-author">Folio: ${esc(r.folio)}</span>` : ""}
         </div>
         <div class="res-price">
           <strong>$${r.price}</strong>
-          <button type="button" class="btn-link-danger" data-business="${r.businessId || ""}" data-slot="${r.slotId}" data-reservation="${r.reservationId || ""}" data-name="${r.businessName}" data-label="${r.label}">Cancelar</button>
+          <button type="button" class="btn-link-danger" data-business="${r.businessId || ""}" data-slot="${r.slotId}" data-reservation="${r.reservationId || ""}" data-name="${esc(r.businessName)}" data-label="${esc(r.label)}">Cancelar</button>
         </div>
       </div>`
     ).join("") + '</div>';
@@ -541,4 +566,16 @@
   renderServiceOptions();
   await renderBusinesses();
   await renderReservations();
+
+  // Auto-refresh silencioso: en una plataforma de "último momento" un cupo
+  // puede desaparecer o aparecer en cualquier momento, y nadie debería tener
+  // que recargar la página a mano para enterarse (así lo hacen Uber/DoorDash
+  // con su inventario en vivo). Se salta el ciclo si hay un modal abierto o
+  // si el cliente está escribiendo en el buscador, para no interrumpirlo.
+  setInterval(async () => {
+    if (document.hidden) return;
+    if ([confirmModal, folioModal, reviewModal].some((m) => m.classList.contains("show"))) return;
+    if (document.activeElement === searchInput) return;
+    await renderBusinesses();
+  }, 20000);
 })();
