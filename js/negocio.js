@@ -55,7 +55,7 @@
     row.innerHTML =
       '<input type="text" class="svc-name" placeholder="Servicio" value="' + esc(name || "") + '">' +
       '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price || "") + '">' +
-      '<button type="button" class="btn-link-danger remove-row">✕</button>';
+      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar servicio">✕</button>';
     row.querySelector(".remove-row").addEventListener("click", () => row.remove());
     container.appendChild(row);
   }
@@ -67,13 +67,33 @@
     row.dataset.staffId = id || ("ST-" + Math.random().toString(36).slice(2, 8));
     row.innerHTML =
       '<input type="text" class="staff-name" placeholder="Nombre" value="' + esc(name || "") + '">' +
-      '<button type="button" class="btn-link-danger remove-row">✕</button>';
+      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar persona">✕</button>';
     row.querySelector(".remove-row").addEventListener("click", () => row.remove());
     container.appendChild(row);
   }
 
   document.getElementById("addServiceRowBtn").addEventListener("click", () => addServiceRow("", ""));
   document.getElementById("addStaffRowBtn").addEventListener("click", () => addStaffRow("", ""));
+
+  // Para avisar si cierran el modal con cambios sin guardar: una foto del
+  // estado del formulario al abrirlo, comparada contra el estado actual.
+  let editModalSnapshot = null;
+  function captureEditModalState() {
+    return JSON.stringify({
+      name: document.getElementById("editName").value,
+      category: document.getElementById("editCategory").value,
+      address: document.getElementById("editAddress").value,
+      photos: document.getElementById("editPhotos").value,
+      services: Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => [
+        row.querySelector(".svc-name").value,
+        row.querySelector(".svc-price").value,
+      ]),
+      staff: Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => row.querySelector(".staff-name").value),
+    });
+  }
+  function editModalDirty() {
+    return editModalSnapshot !== null && captureEditModalState() !== editModalSnapshot;
+  }
 
   document.getElementById("editProfileBtn").addEventListener("click", () => {
     document.getElementById("editName").value = business.name;
@@ -88,13 +108,18 @@
     (business.staff || []).forEach((s) => addStaffRow(s.name, s.id));
 
     editModal.classList.add("show");
+    editModalSnapshot = captureEditModalState();
   });
 
-  function closeEditModal() {
+  function closeEditModal({ force } = {}) {
+    if (!force && editModalDirty() && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) {
+      return;
+    }
+    editModalSnapshot = null;
     editModal.classList.remove("show");
   }
-  document.getElementById("cancelEditBtn").addEventListener("click", closeEditModal);
-  document.getElementById("closeEditBtn").addEventListener("click", closeEditModal);
+  document.getElementById("cancelEditBtn").addEventListener("click", () => closeEditModal());
+  document.getElementById("closeEditBtn").addEventListener("click", () => closeEditModal());
   editModal.addEventListener("click", (e) => { if (e.target === editModal) closeEditModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEditModal(); });
 
@@ -125,9 +150,9 @@
       showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
       return;
     }
-    closeEditModal();
+    closeEditModal({ force: true });
     showToast("Perfil actualizado.");
-    await render();
+    await render({ silent: true });
     renderServiceOptions();
     document.getElementById("userName").textContent = business.name;
     document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
@@ -264,7 +289,7 @@
     await DataStore.removeSlot(business.id, detailSlotId);
     closeSlotDetail();
     showToast("Cupo eliminado.");
-    await render();
+    await render({ silent: true });
   });
 
   const saveSlotBtn = document.getElementById("saveSlotBtn");
@@ -288,7 +313,7 @@
     }
     closeSlotDetail();
     showToast("Cupo actualizado.");
-    await render();
+    await render({ silent: true });
   });
 
   document.getElementById("reopenSlotBtn").addEventListener("click", async () => {
@@ -296,11 +321,20 @@
     await DataStore.reopenSlot(business.id, detailSlotId);
     closeSlotDetail();
     showToast("Cupo reabierto por cancelación.");
-    await render();
+    await render({ silent: true });
   });
 
-  async function render() {
-    business = await getBusiness();
+  async function render({ silent } = {}) {
+    try {
+      business = await getBusiness();
+    } catch (err) {
+      console.error("render failed:", err);
+      // Silencioso en el refresco de fondo y justo después de una acción que
+      // ya mostró su propio toast — deja la agenda tal como estaba en vez de
+      // romper la pantalla por un parpadeo de conexión.
+      if (!silent) showToast("No se pudo actualizar. Revisa tu conexión.");
+      return;
+    }
     renderStaffOptions();
     const todayStart = DataStore.startOfDay(Date.now());
     // Solo de hoy en adelante, y en orden cronológico (hoy primero, luego
@@ -388,7 +422,7 @@
     await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service, dayOffset, discountPct, staffId });
     addSlotBtn.disabled = false;
     showToast("Cupo publicado.");
-    await render();
+    await render({ silent: true });
   });
 
   await render();
@@ -399,6 +433,6 @@
   setInterval(async () => {
     if (document.hidden) return;
     if (slotDetailModal.classList.contains("show") || editModal.classList.contains("show")) return;
-    await render();
+    await render({ silent: true });
   }, 20000);
 })();

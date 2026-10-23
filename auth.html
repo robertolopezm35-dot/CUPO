@@ -90,6 +90,7 @@
         <input type="password" name="password" autocomplete="current-password" required>
       </div>
       <button type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
+      <button type="button" class="btn-link-forgot" data-forgot>¿Olvidaste tu contraseña?</button>
     </form>
 
     <!-- LOGIN: NEGOCIO -->
@@ -103,6 +104,17 @@
         <input type="password" name="password" autocomplete="current-password" required>
       </div>
       <button type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
+      <button type="button" class="btn-link-forgot" data-forgot>¿Olvidaste tu contraseña?</button>
+    </form>
+
+    <!-- RECUPERAR CONTRASEÑA -->
+    <form class="form-panel" id="forgotPasswordForm">
+      <div class="field">
+        <label>Correo</label>
+        <input type="email" name="email" autocomplete="email" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Enviar link</button>
+      <button type="button" class="btn-link-forgot" id="backToLoginBtn">← Regresar a iniciar sesión</button>
     </form>
 
     <div class="mode-toggle">

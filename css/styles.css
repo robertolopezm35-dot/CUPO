@@ -23,6 +23,16 @@
    en especificidad al display:none que el navegador aplica por defecto. */
 [hidden] { display: none !important; }
 
+/* Estado de carga: atenúa el contenido mientras se vuelve a pedir, sin
+   borrarlo ni meter un spinner que salte encima — igual de sutil que el
+   "pull to refresh" de apps como Booksy. */
+.loading { opacity: 0.5; pointer-events: none; transition: opacity 0.15s ease; }
+
+/* Tarjeta señalada por un link compartido (?negocio=ID) — un resplandor que
+   se apaga solo, para que el ojo la encuentre sin tener que marcar nada
+   permanente. */
+.biz-card.highlight { box-shadow: 0 0 0 3px var(--indigo), var(--shadow); transition: box-shadow 2s ease; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -372,6 +382,15 @@ footer {
 
 .form-panel { display: none; }
 .form-panel.active { display: block; }
+
+.btn-link-forgot {
+  display: block;
+  margin: 12px auto 0;
+  background: none;
+  color: var(--indigo);
+  font-size: 13px;
+  font-weight: 700;
+}
 
 .error-msg {
   background: #FEF2F2;

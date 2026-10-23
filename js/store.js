@@ -556,6 +556,17 @@ const CupoStore = (() => {
     return { ok: true, id: record.id };
   }
 
+  // En modo localStorage no hay forma de mandar un correo real — esta
+  // función solo existe de verdad en SupabaseStore (vía Resend/SMTP). Aquí
+  // nada más explica por qué no funciona, para que el botón no se sienta roto.
+  function requestPasswordReset() {
+    return { ok: false, error: "Recuperar contraseña solo funciona en el sitio conectado a Supabase, no en este modo de demostración." };
+  }
+
+  function updatePassword() {
+    return { ok: false, error: "Esta función solo funciona en el sitio conectado a Supabase." };
+  }
+
   function registerClient({ firstName, lastName, email, password, countryCode, phone }) {
     const clients = getClients();
     if (clients.some((c) => c.email.toLowerCase() === email.toLowerCase())) {
@@ -902,6 +913,8 @@ const CupoStore = (() => {
     getClientById,
     getBusinessById,
     login,
+    requestPasswordReset,
+    updatePassword,
     registerClient,
     registerBusiness,
     bookSlot,

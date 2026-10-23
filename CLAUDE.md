@@ -20,7 +20,10 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
 ### Archivos
 
 - `index.html` — landing page
-- `auth.html` + `js/auth.js` — login/registro con selector de rol **Cliente / Negocio**
+- `auth.html` + `js/auth.js` — login/registro con selector de rol **Cliente / Negocio**,
+  y el flujo de "¿Olvidaste tu contraseña?"
+- `reset-password.html` + `js/reset-password.js` — a donde llega el link del correo de
+  recuperar contraseña para definir una nueva (solo funciona con Supabase conectado).
 - `cliente.html` + `js/cliente.js` — panel del cliente: busca y reserva cupos
 - `negocio.html` + `js/negocio.js` — panel del negocio: publica/gestiona su agenda
 - `ventas.html` + `js/ventas.js` — dashboard de ventas del negocio (tipo Bewe): qué se
@@ -291,6 +294,47 @@ reseña con payload XSS, categorías del registro de negocio, doble-submit, una
 reserva que pierde la carrera contra otro cliente, y el badge de escasez con un
 negocio con exactamente 1 cupo — los 6 casos pasaron.
 
+## Segunda ronda de mejoras
+
+Seguimiento a la ronda anterior — esta vez enfocado en accesibilidad, resiliencia y
+features inspiradas en cómo otras plataformas resuelven lo mismo:
+
+- **Recuperar contraseña:** nuevo link "¿Olvidaste tu contraseña?" en los dos login
+  (cliente/negocio) y una página nueva `reset-password.html` donde se define la
+  contraseña nueva. Usa `resetPasswordForEmail`/`updateUser` de Supabase Auth (el
+  SMTP de Resend que ya está configurado se encarga del correo) —
+  `DataStore.requestPasswordReset(email)`/`DataStore.updatePassword(password)`
+  nuevas en `js/supabase-store.js`. En modo localStorage (`js/store.js`) ambas
+  regresan un error explicando que esto solo funciona en el sitio conectado a
+  Supabase, en vez de fallar en silencio. **Acción pendiente tuya:** en el
+  dashboard de Supabase, ve a *Authentication → URL Configuration → Redirect URLs*
+  y agrega la URL de `reset-password.html` en tu sitio real (ej.
+  `https://tu-dominio/reset-password.html`, o el wildcard `https://tu-dominio/**`)
+  — Supabase rechaza el redirect del correo si no está en esa lista. Sin ese paso,
+  el link del correo sigue llegando pero no deja completar el cambio de contraseña.
+  No se probó contra un proyecto real (mismo criterio que el resto de Supabase en
+  este documento — ver "Sin probar en vivo" arriba).
+- **Accesibilidad:** los botones de solo-ícono (♡/♥ favorito, ★ reseña, ✕ quitar
+  fila en Editar negocio) no tenían forma de que un lector de pantalla supiera qué
+  hacían — se agregaron `aria-label`/`aria-pressed`.
+- **Resiliencia ante fallos de red:** `renderBusinesses()` en `cliente.js` y
+  `render()` en `negocio.js` ahora atrapan errores de red en vez de romperse en
+  silencio — sobre todo importante ahora que ambos se vuelven a llamar solos cada
+  20s (auto-refresh de la ronda anterior). Un fallo deja lo último que ya se había
+  mostrado en pantalla (nunca la borra) y avisa con un toast, salvo en los refrescos
+  silenciosos/de fondo donde solo queda en consola para no fastidiar con un toast
+  repetido si la conexión sigue mal.
+- **Loading state:** la lista de cupos del cliente se atenúa un poco mientras
+  recarga al cambiar de pestaña/categoría/ubicación — no pasa en el buscador (para
+  no parpadear en cada tecla) ni en el refresco silencioso de fondo.
+- **Aviso de cambios sin guardar:** si el negocio modifica algo en "Editar negocio"
+  y lo cierra (✕/clic afuera/Esc/Cancelar) sin guardar, ahora confirma antes de
+  descartar.
+- **Compartir un negocio (deep link):** cada tarjeta tiene un botón 🔗 que copia un
+  link directo (`cliente.html?negocio=ID`) — igual que "compartir este lugar" en
+  OpenTable/Booksy. Abrirlo sin sesión no lo pierde: pasa por el login y regresa
+  exactamente ahí (`next=` en la URL), y la tarjeta se resalta un momento al llegar.
+
 ## Enlaces
 
 - **Repo / rama de trabajo:** `feature/cupo-web-app` en
@@ -314,16 +358,19 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
   app esté cerrada necesita una cuenta de servicio de push (Firebase Cloud Messaging,
   OneSignal, Web Push...).
 - **Fotos por subida de archivo real:** hoy el negocio pega una URL externa. Subir el
-  archivo directo desde el panel necesita Supabase Storage conectado (depende de que
-  actives Supabase — ver abajo).
-- Supabase está preparado pero no conectado — falta que alguien cree el proyecto y
-  pegue las credenciales (ver "Base de datos: Supabase" arriba). Hasta entonces sigue
-  en `localStorage`.
-- El flujo de Supabase no se ha probado contra un proyecto real todavía — probarlo
-  completo (registro, reserva, cancelación, RLS) en cuanto se conecte. Esto incluye
-  las tablas nuevas `sales`/`staff`/`reviews`/`favorites` y sus políticas RLS (ver
-  "Backlog ágil" y "Dashboard de Ventas" arriba) — sí se probó a fondo en modo
-  localStorage con Playwright, pero no contra Postgres real.
+  archivo directo desde el panel necesita Supabase Storage conectado.
+- **Dominio propio:** hoy el sitio vive en la URL que te dé el hosting gratuito que
+  uses (ej. `tu-usuario.github.io/CUPO` en GitHub Pages) — comprar y conectar un
+  dominio propio (ej. `cupo.mx`) necesita una cuenta tuya en un registrador
+  (Namecheap, GoDaddy, Google Domains...) y apuntar sus DNS al hosting.
+- ~~Supabase está preparado pero no conectado~~ — **ya está conectado**, con
+  credenciales reales en `js/supabase-config.js` y dos cuentas demo con historial
+  cargado para presentaciones (`demo.negocio@cupo.mx` / `demo.cliente@cupo.mx`,
+  contraseña `cupo1234` — ver "Base de datos: Supabase" arriba). Se probó en vivo el
+  flujo completo de registro/reserva/cancelación con Playwright contra el proyecto
+  real. Lo que falta por confirmar en vivo todavía son las tablas más nuevas
+  (`sales`/`staff`/`reviews`/`favorites` y sus políticas RLS) con reservas reales de
+  clientes distintos a las cuentas demo.
 - `SupabaseStore.seedDemoBusinesses()` copia los cupos de hoy y el catálogo de
   servicios de los 48 negocios de ejemplo, pero no replica su historial de ventas de
   demostración — en Supabase el dashboard de Ventas arranca vacío hasta que entren

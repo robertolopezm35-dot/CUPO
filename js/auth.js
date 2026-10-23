@@ -82,6 +82,15 @@
   }
 
   function goToDashboard() {
+    // Si llegaron aquí por un link compartido (?negocio=ID) que los mandó a
+    // loguearse primero, que regresen exactamente a donde iban en vez de a
+    // la lista genérica — pero solo si de verdad vienen para cliente.html,
+    // nunca si cambiaron de rol a Negocio en el camino.
+    const next = params.get("next");
+    if (next && role === "cliente" && next.startsWith("cliente.html")) {
+      window.location.href = next;
+      return;
+    }
     window.location.href = role === "cliente" ? "cliente.html" : "negocio.html";
   }
 
@@ -158,6 +167,49 @@
       if (!result.ok) return showError(result.error);
       await DataStore.setSession({ role: "negocio", id: result.id });
       goToDashboard();
+    });
+  });
+
+  // ── Recuperar contraseña ────────────────────────────────────────────────
+  const forgotForm = document.getElementById("forgotPasswordForm");
+  const roleToggleEl = document.querySelector(".role-toggle");
+  const modeToggleEl = document.querySelector(".mode-toggle");
+
+  function showForgotPassword() {
+    Object.values(forms).forEach((f) => f.classList.remove("active"));
+    forgotForm.classList.add("active");
+    roleToggleEl.hidden = true;
+    modeToggleEl.hidden = true;
+    authTitle.textContent = "Recuperar contraseña";
+    authSub.textContent = "Te mandamos un link para que elijas una contraseña nueva.";
+    errorMsg.classList.remove("show");
+    errorMsg.textContent = "";
+  }
+
+  function hideForgotPassword() {
+    forgotForm.classList.remove("active");
+    roleToggleEl.hidden = false;
+    modeToggleEl.hidden = false;
+    render();
+  }
+
+  document.querySelectorAll("[data-forgot]").forEach((btn) => {
+    btn.addEventListener("click", showForgotPassword);
+  });
+  document.getElementById("backToLoginBtn").addEventListener("click", hideForgotPassword);
+
+  forgotForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    withLoading(e.target, async () => {
+      const fd = new FormData(e.target);
+      const result = await DataStore.requestPasswordReset(fd.get("email"));
+      if (!result.ok) return showError(result.error);
+      // No decimos "no existe esa cuenta" aunque el correo esté mal escrito
+      // — es el mismo criterio que usa cualquier plataforma real para no
+      // confirmarle a un desconocido qué correos sí están registrados.
+      errorMsg.classList.remove("show");
+      authSub.textContent = "Listo — si existe una cuenta con ese correo, te llegará un link (revisa spam también). Puede tardar un par de minutos.";
+      e.target.reset();
     });
   });
 

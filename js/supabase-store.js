@@ -168,6 +168,26 @@ const SupabaseStore = (() => {
     return { ok: true, id: data.user.id };
   }
 
+  // Manda el correo de "recuperar contraseña" de Supabase (vía el SMTP que
+  // ya está configurado — ver CLAUDE.md). redirectTo apunta a
+  // reset-password.html junto a esta página, para que funcione sin importar
+  // en qué subcarpeta esté publicado el sitio (GitHub Pages, etc.).
+  async function requestPasswordReset(email) {
+    const redirectTo = new URL("reset-password.html", window.location.href).toString();
+    const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }
+
+  // Se usa desde reset-password.html, con la sesión temporal de recuperación
+  // que Supabase arma solo al abrir el link del correo (ver supabase-js
+  // detectSessionInUrl).
+  async function updatePassword(newPassword) {
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }
+
   async function registerClient({ firstName, lastName, email, password, countryCode, phone }) {
     if (!/^\d{10}$/.test(phone)) {
       return { ok: false, error: "El teléfono debe tener 10 dígitos." };
@@ -480,6 +500,8 @@ const SupabaseStore = (() => {
     setSession,
     clearSession,
     login,
+    requestPasswordReset,
+    updatePassword,
     registerClient,
     registerBusiness,
     getBusinesses,

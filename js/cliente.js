@@ -1,14 +1,19 @@
 (async function () {
+  // Si alguien abre un link compartido (?negocio=ID) sin sesión, que no se
+  // pierda camino al login — vuelve exactamente a donde iba después de
+  // entrar, igual que cualquier app con deep links.
+  const loginUrl = "auth.html?mode=login&role=cliente&next=" + encodeURIComponent(location.pathname + location.search);
+
   const session = await DataStore.getSession();
   if (!session || session.role !== "cliente") {
-    window.location.href = "auth.html?mode=login&role=cliente";
+    window.location.href = loginUrl;
     return;
   }
 
   const client = await DataStore.getClientById(session.id);
   if (!client) {
     await DataStore.clearSession();
-    window.location.href = "auth.html?mode=login&role=cliente";
+    window.location.href = loginUrl;
     return;
   }
 
@@ -243,7 +248,7 @@
 
   searchInput.addEventListener("input", async () => {
     searchTerm = searchInput.value.trim().toLowerCase();
-    await renderBusinesses();
+    await renderBusinesses({ silent: true }); // sin atenuado: parpadearía en cada tecla
   });
 
   serviceFilterEl.addEventListener("change", async () => {
@@ -278,24 +283,31 @@
     return h >= range[0] && h < range[1];
   }
 
-  async function renderBusinesses() {
+  // `silent`: sin el atenuado de carga (para no parpadear en cada tecla del
+  // buscador, en el refresco de fondo, o justo después de una acción que ya
+  // mostró su propio toast). Un fallo de red SIEMPRE avisa con toast y NUNCA
+  // borra lo que ya se había mostrado — mejor datos viejos que una pantalla
+  // en blanco sin explicación.
+  async function renderBusinesses({ silent } = {}) {
     const area = DataStore.AREAS.find((a) => a.id === activeArea);
     if (!area || area.comingSoon) return;
 
-    await renderFavoritesBanner();
+    if (!silent) businessListEl.classList.add("loading");
+    try {
+      await renderFavoritesBanner();
 
-    const list = businessListEl;
-    let businesses = (await DataStore.getBusinesses()).filter((b) => area.categories.includes(b.category));
-    if (activeCategory !== "Todas") {
-      businesses = businesses.filter((b) => b.category === activeCategory);
-    }
-    if (searchTerm) {
-      businesses = businesses.filter((b) => b.name.toLowerCase().includes(searchTerm));
-    }
-    if (favoritesOnly) {
-      const favIds = client.favoriteBusinessIds || [];
-      businesses = businesses.filter((b) => favIds.includes(b.id));
-    }
+      const list = businessListEl;
+      let businesses = (await DataStore.getBusinesses()).filter((b) => area.categories.includes(b.category));
+      if (activeCategory !== "Todas") {
+        businesses = businesses.filter((b) => b.category === activeCategory);
+      }
+      if (searchTerm) {
+        businesses = businesses.filter((b) => b.name.toLowerCase().includes(searchTerm));
+      }
+      if (favoritesOnly) {
+        const favIds = client.favoriteBusinessIds || [];
+        businesses = businesses.filter((b) => favIds.includes(b.id));
+      }
 
     const dayStart = DataStore.startOfDay(Date.now() + dayOffset * DAY_MS);
     const dayEnd = dayStart + DAY_MS;
@@ -373,7 +385,7 @@
           ${eligibleForReview ? `<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" data-review-business="${b.id}" data-review-name="${esc(b.name)}">Dejar reseña</button>` : ""}
         </details>`;
 
-      return `<div class="biz-card">
+      return `<div class="biz-card" data-business-id="${b.id}">
         ${photoHtml}
         <div class="biz-head">
           <div>
@@ -387,7 +399,10 @@
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
             <span class="badge">${esc(b.category)}</span>
             ${urgencyHtml}
-            <button type="button" class="fav-toggle ${isFavorite ? "active" : ""}" data-fav="${b.id}" title="Favorito">${isFavorite ? "♥" : "♡"}</button>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="fav-toggle" data-share="${b.id}" title="Compartir" aria-label="Copiar link de este negocio">🔗</button>
+              <button type="button" class="fav-toggle ${isFavorite ? "active" : ""}" data-fav="${b.id}" title="Favorito" aria-label="${isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}" aria-pressed="${isFavorite}">${isFavorite ? "♥" : "♡"}</button>
+            </div>
           </div>
         </div>
         ${catalogHtml}
@@ -412,11 +427,11 @@
               // Alguien más pudo haberse quedado con el cupo justo antes —
               // refresca para que deje de verse "disponible" y el cliente
               // no vuelva a intentar reservar algo que ya no existe.
-              await renderBusinesses();
+              await renderBusinesses({ silent: true });
             } else {
               folioText.innerHTML = `<strong>Folio: ${esc(result.folio)}</strong><br>${esc(business.name)} · ${slot.label}${slot.service ? " · " + esc(slot.service) : ""}.<br>Muestra este folio al llegar. Pagas en el negocio.`;
               folioModal.classList.add("show");
-              await renderBusinesses();
+              await renderBusinesses({ silent: true });
               await renderReservations();
             }
           },
@@ -425,7 +440,7 @@
       });
     });
 
-    list.querySelectorAll(".fav-toggle").forEach((btn) => {
+    list.querySelectorAll(".fav-toggle[data-fav]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const businessId = btn.dataset.fav;
         const result = await DataStore.toggleFavorite(client.id, businessId);
@@ -434,26 +449,52 @@
           if (result.favorited && idx === -1) client.favoriteBusinessIds.push(businessId);
           if (!result.favorited && idx !== -1) client.favoriteBusinessIds.splice(idx, 1);
           showToast(result.favorited ? "Agregado a favoritos." : "Quitado de favoritos.");
-          await renderBusinesses();
+          await renderBusinesses({ silent: true });
         }
       });
     });
 
-    list.querySelectorAll("[data-review-business]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        reviewBusinessId = btn.dataset.reviewBusiness;
-        reviewBusinessName.textContent = btn.dataset.reviewName;
-        reviewStars = 0;
-        reviewComment.value = "";
-        updateStarPicker();
-        reviewModal.classList.add("show");
+    // Compartir: copia un link directo a este negocio (?negocio=ID) — igual
+    // que "compartir este lugar" en OpenTable/Booksy. Si se abre sin sesión,
+    // el login lo manda de vuelta exactamente aquí (ver arriba, next=).
+    list.querySelectorAll("[data-share]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const url = location.origin + location.pathname + "?negocio=" + btn.dataset.share;
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast("Link copiado.");
+        } catch {
+          showToast(url);
+        }
       });
     });
+
+      list.querySelectorAll("[data-review-business]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          reviewBusinessId = btn.dataset.reviewBusiness;
+          reviewBusinessName.textContent = btn.dataset.reviewName;
+          reviewStars = 0;
+          reviewComment.value = "";
+          updateStarPicker();
+          reviewModal.classList.add("show");
+        });
+      });
+    } catch (err) {
+      console.error("renderBusinesses failed:", err);
+      // Silencioso (buscador, refresco de fondo, justo después de una acción
+      // que ya tuvo su propio toast) no molesta con un toast por cada fallo
+      // — si el problema sigue, la próxima acción explícita sí avisa.
+      if (!silent) showToast("No se pudo actualizar. Revisa tu conexión.");
+    } finally {
+      if (!silent) businessListEl.classList.remove("loading");
+    }
   }
 
   function updateStarPicker() {
     starPicker.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("active", parseInt(b.dataset.star, 10) <= reviewStars);
+      const active = parseInt(b.dataset.star, 10) <= reviewStars;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", active);
     });
   }
 
@@ -485,13 +526,19 @@
       showToast(result.error);
     } else {
       showToast("¡Gracias por tu reseña!");
-      await renderBusinesses();
+      await renderBusinesses({ silent: true });
     }
   });
 
   async function renderReservations() {
     const el = document.getElementById("reservationsList");
-    const fresh = await DataStore.getClientById(session.id);
+    let fresh;
+    try {
+      fresh = await DataStore.getClientById(session.id);
+    } catch (err) {
+      console.error("renderReservations failed:", err);
+      return; // deja la lista anterior en pantalla en vez de borrarla
+    }
     const reservations = fresh ? fresh.reservations : [];
     if (!reservations.length) {
       el.innerHTML = '<div class="empty-state">Todavía no tienes reservas.</div>';
@@ -521,7 +568,7 @@
           async () => {
             await DataStore.cancelReservation(client.id, businessId, slotId, reservationId);
             showToast("Reserva cancelada.");
-            await renderBusinesses();
+            await renderBusinesses({ silent: true });
             await renderReservations();
           },
           false
@@ -567,6 +614,18 @@
   await renderBusinesses();
   await renderReservations();
 
+  // Link compartido (?negocio=ID, ver botón 🔗 en cada tarjeta): llévalo
+  // directo a esa tarjeta en vez de dejarlo buscar entre las 48+ de la lista.
+  const targetBusinessId = new URLSearchParams(location.search).get("negocio");
+  if (targetBusinessId) {
+    const card = document.querySelector(`.biz-card[data-business-id="${CSS.escape(targetBusinessId)}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("highlight");
+      setTimeout(() => card.classList.remove("highlight"), 2500);
+    }
+  }
+
   // Auto-refresh silencioso: en una plataforma de "último momento" un cupo
   // puede desaparecer o aparecer en cualquier momento, y nadie debería tener
   // que recargar la página a mano para enterarse (así lo hacen Uber/DoorDash
@@ -576,6 +635,6 @@
     if (document.hidden) return;
     if ([confirmModal, folioModal, reviewModal].some((m) => m.classList.contains("show"))) return;
     if (document.activeElement === searchInput) return;
-    await renderBusinesses();
+    await renderBusinesses({ silent: true });
   }, 20000);
 })();
