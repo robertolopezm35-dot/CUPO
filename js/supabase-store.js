@@ -95,6 +95,7 @@ const SupabaseStore = (() => {
       clientName: row.client_name || "Cliente",
       rating: row.rating,
       comment: row.comment || "",
+      photoUrl: row.photo_url || null,
       date: new Date(row.created_at).getTime(),
     };
   }
@@ -401,14 +402,39 @@ const SupabaseStore = (() => {
     return !!data;
   }
 
-  async function addReview(businessId, clientId, { rating, comment }) {
+  async function addReview(businessId, clientId, { rating, comment, photoUrl }) {
     const { error } = await client.rpc("add_review", {
       p_business_id: businessId,
       p_rating: parseInt(rating, 10) || 0,
       p_comment: comment || "",
+      p_photo_url: photoUrl || null,
     });
     if (error) return { ok: false, error: error.message };
     return { ok: true };
+  }
+
+  const PHOTO_EXT_BY_MIME = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
+  const MAX_STORAGE_PHOTO_BYTES = 5 * 1024 * 1024;
+
+  async function uploadPhoto(ownerId, file, kind) {
+    if (!file) return { ok: false, error: "No se seleccionó ningún archivo." };
+    if (!file.type || !file.type.startsWith("image/")) {
+      return { ok: false, error: "Solo se aceptan imágenes." };
+    }
+    if (file.size > MAX_STORAGE_PHOTO_BYTES) {
+      return { ok: false, error: "La imagen pesa más de 5 MB." };
+    }
+    const ext = PHOTO_EXT_BY_MIME[file.type] || "jpg";
+    const path = `${kind}/${ownerId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+    const { error: uploadError } = await client.storage.from("photos").upload(path, file);
+    if (uploadError) return { ok: false, error: uploadError.message };
+    const { data } = client.storage.from("photos").getPublicUrl(path);
+    return { ok: true, url: data.publicUrl };
   }
 
   function getAverageRating(business) {
@@ -518,6 +544,7 @@ const SupabaseStore = (() => {
     hasReservationAt,
     addReview,
     getAverageRating,
+    uploadPhoto,
     toggleFavorite,
     getNewFavoriteSlots,
     touchFavoritesCheck,

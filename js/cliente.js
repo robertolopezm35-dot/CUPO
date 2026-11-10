@@ -71,6 +71,7 @@
   const reviewBusinessName = document.getElementById("reviewBusinessName");
   const starPicker = document.getElementById("starPicker");
   const reviewComment = document.getElementById("reviewComment");
+  const reviewPhotoInput = document.getElementById("reviewPhoto");
 
   const DAY_MS = 86400000;
   const HORARIO_RANGES = { morning: [8, 12], afternoon: [12, 17], evening: [17, 21] };
@@ -389,7 +390,7 @@
       const recentReviews = (b.reviews || []).slice(0, 2);
       const reviewsHtml = `<details class="catalog-details">
           <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
-          ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span></div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
+          ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
           ${eligibleForReview ? `<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" data-review-business="${b.id}" data-review-name="${esc(b.name)}">Dejar reseña</button>` : ""}
         </details>`;
 
@@ -483,6 +484,7 @@
           reviewBusinessName.textContent = btn.dataset.reviewName;
           reviewStars = 0;
           reviewComment.value = "";
+          reviewPhotoInput.value = "";
           updateStarPicker();
           reviewModal.classList.add("show");
         });
@@ -527,7 +529,18 @@
       return;
     }
     submitReviewBtn.disabled = true;
-    const result = await DataStore.addReview(reviewBusinessId, client.id, { rating: reviewStars, comment: reviewComment.value });
+    let photoUrl = null;
+    const photoFile = reviewPhotoInput.files[0];
+    if (photoFile) {
+      const upload = await DataStore.uploadPhoto(client.id, photoFile, "review");
+      if (!upload.ok) {
+        submitReviewBtn.disabled = false;
+        showToast(upload.error);
+        return;
+      }
+      photoUrl = upload.url;
+    }
+    const result = await DataStore.addReview(reviewBusinessId, client.id, { rating: reviewStars, comment: reviewComment.value, photoUrl });
     submitReviewBtn.disabled = false;
     closeReview();
     if (!result.ok) {

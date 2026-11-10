@@ -139,6 +139,9 @@ create table public.reviews (
   client_name text not null,
   rating int not null check (rating between 1 and 5),
   comment text not null default '',
+  -- Foto opcional que el cliente sube al dejar su reseña (bucket "photos",
+  -- carpeta reviews/<su-uid>/...) — ver "Fotos: Supabase Storage" abajo.
+  photo_url text,
   created_at timestamptz not null default now(),
   unique (business_id, client_id)
 );
@@ -403,7 +406,7 @@ as $$
   );
 $$;
 
-create or replace function public.add_review(p_business_id uuid, p_rating int, p_comment text)
+create or replace function public.add_review(p_business_id uuid, p_rating int, p_comment text, p_photo_url text default null)
 returns public.reviews
 language plpgsql
 security definer
@@ -424,10 +427,10 @@ begin
   select first_name || ' ' || last_name into v_client_name
   from public.clients where id = auth.uid();
 
-  insert into public.reviews (business_id, client_id, client_name, rating, comment)
-  values (p_business_id, auth.uid(), coalesce(v_client_name, 'Cliente'), p_rating, trim(coalesce(p_comment, '')))
+  insert into public.reviews (business_id, client_id, client_name, rating, comment, photo_url)
+  values (p_business_id, auth.uid(), coalesce(v_client_name, 'Cliente'), p_rating, trim(coalesce(p_comment, '')), p_photo_url)
   on conflict (business_id, client_id)
-  do update set rating = excluded.rating, comment = excluded.comment, created_at = now()
+  do update set rating = excluded.rating, comment = excluded.comment, photo_url = excluded.photo_url, created_at = now()
   returning * into v_review;
 
   return v_review;
@@ -500,3 +503,36 @@ $$;
 -- crear a través de signUp(), no con un INSERT directo. Usa
 -- SupabaseStore.seedDemoBusinesses() desde la consola del navegador una
 -- vez que la app ya esté conectada (ver js/supabase-store.js).
+
+-- ── Fotos: Supabase Storage ────────────────────────────────────────────────
+-- Un solo bucket público para las dos cosas que suben archivo: fotos de
+-- perfil del negocio (antes solo se podía pegar una URL externa) y la foto
+-- opcional que un cliente agrega a su reseña. Público = cualquiera puede
+-- ver la imagen por su URL sin loguearse (igual que una URL pegada a mano),
+-- pero solo el dueño autenticado de cada carpeta puede subir ahí — ver
+-- DataStore.uploadPhoto() en supabase-store.js.
+insert into storage.buckets (id, name, public)
+values ('photos', 'photos', true)
+on conflict (id) do nothing;
+
+create policy "Negocios suben fotos solo a su propia carpeta"
+on storage.objects for insert
+with check (
+  bucket_id = 'photos'
+  and (storage.foldername(name))[1] = 'business'
+  and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+create policy "Clientes suben fotos de reseña solo a su propia carpeta"
+on storage.objects for insert
+with check (
+  bucket_id = 'photos'
+  and (storage.foldername(name))[1] = 'review'
+  and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+-- El bucket ya es público (las URLs funcionan sin esta política), pero se
+-- deja explícita por si alguna vez se cambia a privado.
+create policy "Cualquiera puede ver las fotos del bucket"
+on storage.objects for select
+using (bucket_id = 'photos');

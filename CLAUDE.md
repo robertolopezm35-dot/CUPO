@@ -428,6 +428,96 @@ errores de JS, los 33 cupos pasados de demo aparecen en negocio.html, el toggle 
 filtros en móvil funciona, el grid de 2 columnas y la gráfica de línea se ven
 correctos en las capturas.
 
+## Subida real de fotos (Supabase Storage)
+
+Hasta ahora, tanto las fotos de perfil del negocio como (al agregarse en HU-02) las
+reseñas solo aceptaban pegar una URL externa ya subida a otro lado. Se agregó subida
+real de archivos desde el propio dispositivo, en dos lugares:
+
+- **Fotos de negocio** (`negocio.html` → "Editar negocio"): junto al textarea de URLs
+  ya existente, un `<input type="file" id="editPhotoFile" accept="image/*" multiple>`
+  — al elegir uno o varios archivos, cada uno se sube de inmediato y su URL resultante
+  se agrega como una línea más al textarea (que sigue funcionando exactamente igual
+  para quien prefiera seguir pegando URLs a mano; ambos métodos conviven).
+- **Foto en una reseña** (`cliente.html` → modal "Dejar reseña"): un campo de archivo
+  opcional junto al comentario. Sigue aplicando la misma regla de siempre (HU-06) —
+  solo puede dejar reseña, con o sin foto, quien ya reservó en ese negocio
+  (`hasReservationAt`/`has_reservation_at`); esto no cambió, la foto es un campo más
+  dentro del mismo flujo ya protegido.
+
+Implementación, en los dos backends:
+
+- **`js/store.js` (localStorage):** `uploadPhoto(ownerId, file)` nueva — no hay un
+  servicio de archivos real en este modo, así que el archivo se convierte a un
+  `data:` URI con `FileReader.readAsDataURL()` y así se guarda. Límite de 1.2 MB por
+  imagen (localStorage tiene cupo total de ~5-10 MB por sitio compartido con el resto
+  de la demo, y base64 infla el archivo original ~33%) — si el archivo pesa más, se
+  rechaza con un mensaje explicando por qué, en vez de romper el storage del
+  navegador. `addReview` ahora guarda también `photoUrl` en la reseña.
+- **`js/supabase-store.js` (real):** `uploadPhoto(ownerId, file, kind)` nueva — sube
+  el archivo de verdad a Supabase Storage (`client.storage.from('photos').upload(...)`)
+  en la ruta `<kind>/<ownerId>/<timestamp>-<random>.<ext>` (`kind` es `"business"` o
+  `"review"`) y regresa la URL pública (`getPublicUrl`). Límite de 5 MB (el plan
+  gratis de Supabase Storage permite hasta 50 MB por archivo, pero 5 MB ya es más que
+  suficiente para una foto de celular comprimida y evita que alguien use todo el 1 GB
+  gratis con un solo archivo). `add_review()` (RPC) ahora acepta `p_photo_url` y lo
+  guarda en la reseña.
+- **`db/schema.sql`:** columna nueva `reviews.photo_url`; `add_review()` actualizada;
+  nuevo bucket de Storage `photos` (público, para que cualquiera pueda *ver* las fotos
+  sin necesitar sesión) con 3 políticas RLS sobre `storage.objects`: un negocio solo
+  puede subir a su propia carpeta `business/<su-uid>/...`, un cliente solo a
+  `review/<su-uid>/...` (comparando contra `auth.uid()`, no contra el id que manda el
+  cliente, para que nadie pueda subir "como" otro negocio o cliente), y cualquiera
+  puede leer (`select`) cualquier archivo del bucket.
+
+Todo esto se probó a fondo con Playwright en modo localStorage: subir una foto de
+negocio y verificar que su URL (`data:image/...`) aparece en el textarea y se guarda
+en `business.photos`; que un archivo de más de 1.2 MB se rechaza con el mensaje
+correcto sin tocar lo ya guardado; y el flujo completo de reseña con foto (seleccionar
+estrellas, comentario, foto, enviar) verificando que la reseña guarda `photoUrl` y que
+el thumbnail se renderiza en la tarjeta del negocio escapado con la misma función
+`esc()` del resto del proyecto (defensa adicional, aunque la URL en este caso la genera
+el propio backend, no texto libre del usuario). **No se probó contra Supabase real**
+(mismo criterio que el resto de cambios de esquema de este proyecto — ver "Sin probar
+en vivo" arriba).
+
+**Acción pendiente tuya:** si ya conectaste Supabase, corre esto una sola vez en el
+SQL Editor para traer tu base al día (es seguro de volver a correr, no borra nada):
+
+```sql
+alter table public.reviews add column if not exists photo_url text;
+
+insert into storage.buckets (id, name, public)
+values ('photos', 'photos', true)
+on conflict (id) do nothing;
+
+create policy "Negocios suben fotos solo a su propia carpeta"
+on storage.objects for insert
+with check (
+  bucket_id = 'photos'
+  and (storage.foldername(name))[1] = 'business'
+  and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+create policy "Clientes suben fotos de reseña solo a su propia carpeta"
+on storage.objects for insert
+with check (
+  bucket_id = 'photos'
+  and (storage.foldername(name))[1] = 'review'
+  and (storage.foldername(name))[2] = auth.uid()::text
+);
+
+create policy "Cualquiera puede ver las fotos del bucket"
+on storage.objects for select
+using (bucket_id = 'photos');
+```
+
+y luego vuelve a pegar y correr la función `add_review()` completa de `db/schema.sql`
+(el `create or replace function` no afecta las reseñas existentes). Mientras no
+corras esto, el sitio real sigue funcionando igual — las fotos de negocio seguirán
+aceptando solo URL pegada a mano hasta que exista el bucket, y las reseñas nuevas
+simplemente no tendrán foto.
+
 ## Pendiente / decisiones abiertas
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
@@ -441,8 +531,9 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
   aviso local dentro de la sesión del navegador; un push real que llegue aunque la
   app esté cerrada necesita una cuenta de servicio de push (Firebase Cloud Messaging,
   OneSignal, Web Push...).
-- **Fotos por subida de archivo real:** hoy el negocio pega una URL externa. Subir el
-  archivo directo desde el panel necesita Supabase Storage conectado.
+- ~~Fotos por subida de archivo real~~ — **ya se puede subir el archivo directo**
+  desde el panel, tanto el negocio (foto de perfil) como el cliente (foto en su
+  reseña) — ver "Subida real de fotos (Supabase Storage)" arriba.
 - ~~Dominio propio~~ — **ya se compró `mycupo.com`** y ya se agregó el `CNAME` del
   lado del repo; falta que apuntes el DNS del registrador — ver "Dominio propio:
   mycupo.com" arriba para los registros exactos y los pasos que faltan de tu lado.

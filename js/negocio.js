@@ -75,6 +75,29 @@
   document.getElementById("addServiceRowBtn").addEventListener("click", () => addServiceRow("", ""));
   document.getElementById("addStaffRowBtn").addEventListener("click", () => addStaffRow("", ""));
 
+  const editPhotoFileInput = document.getElementById("editPhotoFile");
+  const editPhotoHint = document.getElementById("editPhotoHint");
+  const editPhotoHintDefault = editPhotoHint.textContent;
+  editPhotoFileInput.addEventListener("change", async () => {
+    const files = Array.from(editPhotoFileInput.files || []);
+    if (!files.length) return;
+    const photosTextarea = document.getElementById("editPhotos");
+    editPhotoFileInput.disabled = true;
+    for (const file of files) {
+      editPhotoHint.textContent = "Subiendo " + file.name + "...";
+      const result = await DataStore.uploadPhoto(business.id, file, "business");
+      if (!result.ok) {
+        showToast(result.error || "No se pudo subir la foto.");
+        continue;
+      }
+      const current = photosTextarea.value.trim();
+      photosTextarea.value = current ? current + "\n" + result.url : result.url;
+    }
+    editPhotoHint.textContent = editPhotoHintDefault;
+    editPhotoFileInput.disabled = false;
+    editPhotoFileInput.value = "";
+  });
+
   // Para avisar si cierran el modal con cambios sin guardar: una foto del
   // estado del formulario al abrirlo, comparada contra el estado actual.
   let editModalSnapshot = null;
@@ -100,6 +123,7 @@
     document.getElementById("editCategory").value = business.category;
     document.getElementById("editAddress").value = business.address;
     document.getElementById("editPhotos").value = (business.photos || []).join("\n");
+    editPhotoFileInput.value = "";
 
     document.getElementById("editServicesRows").innerHTML = "";
     (business.servicesCatalog || []).forEach((s) => addServiceRow(s.name, s.price));

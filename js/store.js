@@ -851,7 +851,7 @@ const CupoStore = (() => {
     return (business.sales || []).some((v) => v.clientId === clientId);
   }
 
-  function addReview(businessId, clientId, { rating, comment }) {
+  function addReview(businessId, clientId, { rating, comment, photoUrl }) {
     if (!hasReservationAt(clientId, businessId)) {
       return { ok: false, error: "Solo quienes ya reservaron en este negocio pueden dejar una reseña." };
     }
@@ -869,6 +869,7 @@ const CupoStore = (() => {
       clientName: client ? client.name : "Cliente",
       rating: r,
       comment: (comment || "").trim(),
+      photoUrl: photoUrl || null,
       date: Date.now(),
     };
     if (existing) {
@@ -932,6 +933,29 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
+  // En modo localStorage no hay un servicio de archivos real — la foto se
+  // guarda tal cual como un data: URI dentro del localStorage del navegador.
+  // Por eso el límite aquí es más chico que en Supabase (ver
+  // supabase-store.js): localStorage tiene una cuota total de unos 5-10 MB
+  // por sitio compartida con el resto de los datos de la demo, y base64
+  // infla el archivo original ~33%.
+  const MAX_LOCAL_PHOTO_BYTES = 1.2 * 1024 * 1024;
+  function uploadPhoto(ownerId, file) {
+    if (!file) return Promise.resolve({ ok: false, error: "No se seleccionó ningún archivo." });
+    if (!file.type || !file.type.startsWith("image/")) {
+      return Promise.resolve({ ok: false, error: "Solo se aceptan imágenes." });
+    }
+    if (file.size > MAX_LOCAL_PHOTO_BYTES) {
+      return Promise.resolve({ ok: false, error: "La imagen pesa más de 1.2 MB — en este modo de demostración (localStorage) no caben archivos más grandes." });
+    }
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ ok: true, url: reader.result });
+      reader.onerror = () => resolve({ ok: false, error: "No se pudo leer el archivo." });
+      reader.readAsDataURL(file);
+    });
+  }
+
   return {
     AREAS,
     CATEGORIES,
@@ -971,6 +995,7 @@ const CupoStore = (() => {
     toggleFavorite,
     getNewFavoriteSlots,
     touchFavoritesCheck,
+    uploadPhoto,
   };
 })();
 
