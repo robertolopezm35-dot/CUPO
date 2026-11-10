@@ -172,6 +172,35 @@ button {
   flex-wrap: wrap;
 }
 
+/* "Screenshot flotante" del panel real, como mockup de navegador — le da al
+   landing algo que mostrar en vez de solo texto. */
+.hero-shot {
+  max-width: 920px;
+  margin: 48px auto 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(20, 20, 43, 0.25), 0 10px 24px rgba(20, 20, 43, 0.08);
+  border: 1px solid var(--gray-light);
+  text-align: left;
+}
+.hero-shot-bar {
+  display: flex;
+  gap: 6px;
+  padding: 12px 16px;
+  background: #EDEDF2;
+}
+.hero-shot-bar span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #D1D1D8;
+}
+.hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* SECTIONS */
 .section {
   padding: 56px 20px;
@@ -586,6 +615,22 @@ footer {
   overflow: hidden;
 }
 
+/* En escritorio ancho, dos columnas tipo "masonry" (column-count en vez de
+   grid) para que las tarjetas de altura distinta no dejen huecos feos entre
+   filas — una sola columna angosta desperdiciaba la mitad de la pantalla. */
+@media (min-width: 900px) {
+  #businessList {
+    column-count: 2;
+    column-gap: 16px;
+  }
+  #businessList .biz-card {
+    break-inside: avoid;
+  }
+  #businessList .empty-state {
+    column-span: all;
+  }
+}
+
 .biz-photo {
   height: 110px;
   margin: -20px -20px 16px;
@@ -685,8 +730,12 @@ footer {
 
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 30px 20px;
   color: var(--gray);
+  background: var(--white);
+  border: 1.5px dashed var(--gray-light);
+  border-radius: var(--radius);
+  font-size: 14px;
 }
 
 /* MODAL */
@@ -785,6 +834,10 @@ footer {
   border-top: 1px dashed var(--gray-light);
 }
 .add-slot-row .field { margin-bottom: 0; flex: 1; min-width: 110px; }
+/* Select de Servicio/Estilista necesita más espacio que un input numérico
+   (Hora, Duración, Precio, Descuento) — si no, el texto se corta en
+   pantallas anchas donde la fila completa de 7 campos + botón se aprieta. */
+.add-slot-row .field:has(select) { min-width: 150px; }
 
 .reservation-row {
   display: flex;
@@ -804,6 +857,18 @@ footer {
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.filters-toggle { display: none; flex-shrink: 0; }
+
+/* En celular hay demasiado "chrome" antes del primer cupo (buscador, 2
+   botones, 2 selects, chips de categoría) — se esconden los filtros
+   secundarios detrás de un botón, dejando el buscador siempre visible. En
+   escritorio no cambia nada: el botón ni se muestra y el panel va abierto. */
+@media (max-width: 700px) {
+  .filters-toggle { display: inline-flex; }
+  .more-filters { display: none; }
+  .more-filters.show { display: block; }
 }
 .search-input {
   flex: 1;

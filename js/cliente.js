@@ -54,6 +54,8 @@
   const comingSoonPanel = document.getElementById("comingSoonPanel");
   const businessListEl = document.getElementById("businessList");
   const searchInput = document.getElementById("searchInput");
+  const filtersToggleBtn = document.getElementById("filtersToggleBtn");
+  const moreFilters = document.getElementById("moreFilters");
   const sortNearbyBtn = document.getElementById("sortNearbyBtn");
   const favoritesOnlyBtn = document.getElementById("favoritesOnlyBtn");
   const favoritesBanner = document.getElementById("favoritesBanner");
@@ -249,6 +251,12 @@
   searchInput.addEventListener("input", async () => {
     searchTerm = searchInput.value.trim().toLowerCase();
     await renderBusinesses({ silent: true }); // sin atenuado: parpadearía en cada tecla
+  });
+
+  filtersToggleBtn.addEventListener("click", () => {
+    const willShow = !moreFilters.classList.contains("show");
+    moreFilters.classList.toggle("show", willShow);
+    filtersToggleBtn.textContent = willShow ? "✕ Cerrar filtros" : "⚙️ Filtros";
   });
 
   serviceFilterEl.addEventListener("change", async () => {

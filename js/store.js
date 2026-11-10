@@ -361,11 +361,26 @@ const CupoStore = (() => {
     return d.getTime();
   }
 
+  function labelFor(date) {
+    const h = date.getHours();
+    const m = date.getMinutes();
+    const displayH = h % 12 === 0 ? 12 : h % 12;
+    const ampm = h >= 12 ? "PM" : "AM";
+    return displayH + ":" + String(m).padStart(2, "0") + " " + ampm;
+  }
+
   // Genera historial de ventas de demostración (últimos 30 días) para que
-  // el dashboard de Ventas no se vea vacío con los negocios semilla.
-  function seedSales(services, basePrice) {
+  // el dashboard de Ventas no se vea vacío con los negocios semilla — y, para
+  // cada venta no cancelada, el cupo "pasado" que le corresponde en la
+  // agenda (mismo día/servicio/precio/cliente), para que "Citas pasadas" en
+  // negocio.js no se vea vacío mientras Ventas sí muestra historial. Una
+  // venta cancelada no genera cupo: en la vida real ese cupo se reabrió y
+  // probablemente lo tomó alguien más, así que no hay una "cita pasada"
+  // consistente que mostrar para ella.
+  function seedPastHistory(services, basePrice) {
     const count = 18 + Math.floor(Math.random() * 20);
     const sales = [];
+    const pastSlots = [];
     for (let i = 0; i < count; i++) {
       const cancelled = Math.random() < 0.08;
       const jitter = 0.85 + Math.random() * 0.3;
@@ -373,28 +388,52 @@ const CupoStore = (() => {
       const pct = discounted ? 10 + Math.floor(Math.random() * 5) * 5 : 0;
       const original = Math.round((basePrice * jitter) / 10) * 10;
       const price = discounted ? Math.round((original * (1 - pct / 100)) / 5) * 5 : original;
+      const time = randomPastTimestamp(30);
+      const service = services[Math.floor(Math.random() * services.length)];
+      const clientName = DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)];
+      const slotId = cancelled ? null : "ps" + Math.random().toString(36).slice(2, 9);
       sales.push({
         id: "v" + Math.random().toString(36).slice(2, 9),
-        date: randomPastTimestamp(30),
-        service: services[Math.floor(Math.random() * services.length)],
+        date: time,
+        service,
         price,
         originalPrice: discounted ? original : null,
         discountPct: pct,
         staffName: null,
-        clientName: DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)],
-        slotId: null,
+        clientName,
+        slotId,
         status: cancelled ? "cancelada" : "completada",
       });
+      if (slotId) {
+        pastSlots.push({
+          id: slotId,
+          time,
+          createdAt: time,
+          label: labelFor(new Date(time)),
+          duration: 45,
+          price,
+          originalPrice: discounted ? original : null,
+          discountPct: pct,
+          service,
+          staffId: null,
+          staffName: null,
+          status: "booked",
+          clientId: null,
+          clientName,
+        });
+      }
     }
     sales.sort((a, b) => b.date - a.date);
-    return sales;
+    pastSlots.sort((a, b) => b.time - a.time);
+    return { sales, pastSlots };
   }
 
   function bizSeed(category, baseHour, count, price) {
     const services = SERVICES_BY_CATEGORY[category];
+    const { sales, pastSlots } = seedPastHistory(services, price);
     return {
-      slots: seedSlots(baseHour, count, price, services),
-      sales: seedSales(services, price),
+      slots: [...seedSlots(baseHour, count, price, services), ...pastSlots],
+      sales,
     };
   }
 

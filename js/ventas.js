@@ -73,6 +73,53 @@
     `).join("");
   }
 
+  // Línea/área en SVG puro (sin librerías) para "Ingresos por día" — con un
+  // solo punto (período "Hoy") no hay línea que trazar, así que cae de
+  // vuelta a las barras normales.
+  function renderLineChart(container, rows, opts = {}) {
+    if (!rows.length) {
+      container.innerHTML = '<span style="color:var(--gray);font-size:13.5px">Sin datos en este período.</span>';
+      return;
+    }
+    if (rows.length < 2) {
+      renderBars(container, rows, opts);
+      return;
+    }
+    const W = 640, H = 220, padX = 36, padY = 24, labelH = 24;
+    const max = Math.max(...rows.map((r) => r.value), 1);
+    const plotW = W - padX * 2;
+    const plotH = H - padY * 2 - labelH;
+    const stepX = plotW / (rows.length - 1);
+    const points = rows.map((r, i) => ({
+      x: padX + stepX * i,
+      y: padY + plotH - (r.value / max) * plotH,
+      r,
+    }));
+    const linePath = points.map((p, i) => (i === 0 ? "M" : "L") + p.x.toFixed(1) + "," + p.y.toFixed(1)).join(" ");
+    const floorY = (padY + plotH).toFixed(1);
+    const areaPath = `${linePath} L${points[points.length - 1].x.toFixed(1)},${floorY} L${points[0].x.toFixed(1)},${floorY} Z`;
+    const dots = points.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#4F46E5" />`).join("");
+    const axisLabels = points.map((p) => `<text x="${p.x.toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#6B7280">${esc(p.r.label)}</text>`).join("");
+    const valueLabels = rows.length <= 8
+      ? points.map((p) => `<text x="${p.x.toFixed(1)}" y="${(Math.max(p.y - 10, 12)).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#14142B">${opts.money ? MONEY(p.r.value) : p.r.value}</text>`).join("")
+      : "";
+    container.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="lineChartFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4F46E5" stop-opacity="0.25" />
+            <stop offset="100%" stop-color="#4F46E5" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#lineChartFill)" />
+        <path d="${linePath}" fill="none" stroke="#4F46E5" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />
+        ${dots}
+        ${valueLabels}
+        ${axisLabels}
+      </svg>
+    `;
+  }
+
   function dayLabel(ts) {
     return new Date(ts).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
   }
@@ -262,7 +309,7 @@
     const prevTotal = prevCompleted.reduce((sum, s) => sum + s.price, 0);
     renderTrend(document.getElementById("statTotalTrend"), total, prevTotal, prevLabel);
 
-    renderBars(document.getElementById("dayChart"), bucketRevenue(sales), { money: true });
+    renderLineChart(document.getElementById("dayChart"), bucketRevenue(sales), { money: true });
     renderBars(document.getElementById("hourChart"), bucketByHour(sales), { money: true });
     renderDiscountInsight(document.getElementById("discountInsight"), completed, total);
     renderServiceRank(document.getElementById("serviceRank"), sales);

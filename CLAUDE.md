@@ -44,6 +44,10 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   triggers, funciones RPC). Se corre una sola vez en el SQL Editor de Supabase.
 - `CNAME` — un archivo de una sola línea (`mycupo.com`) que le dice a GitHub Pages
   qué dominio propio debe servir — ver "Dominio propio: mycupo.com" abajo.
+- `favicon.svg` — ícono del navegador, el mismo círculo índigo con "C" del logo.
+- `404.html` — página de error con la marca de CUPO; GitHub Pages la sirve sola.
+- `assets/app-screenshot.png` — screenshot real de `cliente.html` usado como mockup
+  en el hero del landing (`index.html`).
 
 ## Base de datos: Supabase
 
@@ -379,6 +383,51 @@ Ya comprado. Para conectarlo a GitHub Pages:
 - Mientras el DNS no propague, `https://robertolopezm35-dot.github.io/CUPO/` sigue
   funcionando exactamente igual — no se rompe nada en lo que haces el cambio.
 
+**Estado (10 nov 2026):** DNS ya configurado en Cloudflare (los 8 registros A/AAAA en
+"DNS only", el CNAME de `www`), dominio ya verificado por GitHub (el TXT se aceptó).
+Solo falta que GitHub termine de emitir el certificado SSL — la casilla "Enforce
+HTTPS" en *Settings → Pages* sigue en "DNS Check in Progress"; es automático, no hay
+nada más que hacer salvo esperar (y, si tarda mucho, volver a darle "Save" al campo
+del dominio para forzar un chequeo).
+
+## Tercera ronda de mejoras
+
+Una pasada de diseño/pulido tras revisar screenshots reales de las 4 pantallas
+principales en escritorio y móvil — encontrados y corregidos:
+
+- **Texto cortado en "Publicar cupo" (escritorio):** los selects de Servicio y
+  Estilista se truncaban (`.add-slot-row .field:has(select)` ahora con más
+  `min-width`).
+- **"Citas pasadas" vacío aunque Ventas mostrara historial:** `seedPastHistory()` en
+  `js/store.js` (antes `seedSales`) ahora genera, para cada venta de demo no
+  cancelada, un cupo "pasado" real en `business.slots` con el mismo día/servicio/
+  precio/cliente — antes las ventas de demo no tenían ningún cupo vinculado
+  (`slotId: null` siempre), así que negocio.js nunca tenía nada que mostrar ahí. Las
+  ventas canceladas siguen sin generar cupo (en la vida real ese cupo se reabrió).
+- **Estados vacíos rediseñados:** `.empty-state` pasó de 60px de padding flotando
+  solo a una tarjeta con borde punteado, más compacta.
+- **Grid de 2 columnas en escritorio para la lista de negocios:** `#businessList`
+  usa `column-count` (no `grid`) a partir de 900px — así tarjetas de altura distinta
+  no dejan huecos feos entre filas.
+- **Filtros secundarios colapsados en móvil:** "Ordenar por cercanía"/"Solo
+  favoritos"/los 2 selects ahora viven detrás de un botón "⚙️ Filtros" que solo
+  aparece en pantallas chicas (≤700px) — el buscador se queda siempre visible. En
+  escritorio no cambió nada.
+- **Mockup de la app en el hero del landing:** un screenshot real de
+  `cliente.html` (con datos demo) en un marco tipo ventana de navegador
+  (`assets/app-screenshot.png`), más una fila de 3 stats honestos (48 negocios, 6
+  categorías, "$0 — pagas en el negocio").
+- **"Ingresos por día" en Ventas ahora es una línea con área rellena** (SVG puro,
+  sin librerías) en vez de barras — con un solo punto (período "Hoy") cae de vuelta
+  a las barras, porque una línea de un solo punto no dice nada.
+- **Favicon** (`favicon.svg`, el mismo círculo índigo con "C") y **página 404**
+  (`404.html`) con la marca de CUPO en vez de la genérica de GitHub Pages.
+
+Probado con Playwright contra las 4 páginas principales en escritorio y móvil — sin
+errores de JS, los 33 cupos pasados de demo aparecen en negocio.html, el toggle de
+filtros en móvil funciona, el grid de 2 columnas y la gráfica de línea se ven
+correctos en las capturas.
+
 ## Pendiente / decisiones abiertas
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
@@ -415,3 +464,9 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
 - Estructura de costos y métricas clave del Lean Canvas son hipótesis de arranque, no
   validadas con negocios reales todavía.
 - Modelo de cobro al negocio (comisión por reserva / suscripción / freemium) sin decidir.
+- **Logo:** se exploraron varias opciones (ver conversación) pero nunca se eligió una —
+  sigue el círculo índigo con "C" por default. Puedo diseñarlo, pero elegir cuál es
+  decisión tuya.
+- **Analítica del sitio:** para saber cuánta gente entra una vez que `mycupo.com` esté
+  público, falta elegir/crear cuenta en un servicio (ej. Plausible, Simple Analytics,
+  Google Analytics) — cuál usar y la cuenta son tuyos.

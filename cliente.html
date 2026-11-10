@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CUPO — Cupos disponibles</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -27,18 +28,24 @@
 
   <div class="search-row">
     <input type="text" id="searchInput" class="search-input" placeholder="Buscar por nombre de negocio...">
-    <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
-    <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn">♡ Solo favoritos</button>
+    <button type="button" class="btn btn-outline btn-sm filters-toggle" id="filtersToggleBtn">⚙️ Filtros</button>
   </div>
 
-  <div class="search-row">
-    <select id="serviceFilter" class="filter-select"><option value="">Todos los servicios</option></select>
-    <select id="horarioFilter" class="filter-select">
-      <option value="">Todo el horario</option>
-      <option value="morning">Mañana (8–12)</option>
-      <option value="afternoon">Tarde (12–17)</option>
-      <option value="evening">Noche (17–21)</option>
-    </select>
+  <div id="moreFilters" class="more-filters">
+    <div class="search-row">
+      <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
+      <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn">♡ Solo favoritos</button>
+    </div>
+
+    <div class="search-row">
+      <select id="serviceFilter" class="filter-select"><option value="">Todos los servicios</option></select>
+      <select id="horarioFilter" class="filter-select">
+        <option value="">Todo el horario</option>
+        <option value="morning">Mañana (8–12)</option>
+        <option value="afternoon">Tarde (12–17)</option>
+        <option value="evening">Noche (17–21)</option>
+      </select>
+    </div>
   </div>
 
   <div class="toolbar" id="categoryFilters"></div>
