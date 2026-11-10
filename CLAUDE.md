@@ -518,6 +518,31 @@ corras esto, el sitio real sigue funcionando igual — las fotos de negocio segu
 aceptando solo URL pegada a mano hasta que exista el bucket, y las reseñas nuevas
 simplemente no tendrán foto.
 
+## Vista previa del negocio
+
+El negocio ahora puede ver, con un botón "👁️ Vista previa" junto a "Editar negocio",
+exactamente la misma tarjeta que ve un cliente en `cliente.html`: foto/banner,
+nombre, dirección, calificación, badge de categoría, badge de escasez si quedan 1-2
+cupos hoy, catálogo de servicios, los cupos de hoy (con descuento/estilista/duración
+tal como los ve un cliente) y sus reseñas recientes con foto. Es de solo lectura — no
+se puede reservar ni dejar reseña desde ahí, solo mirar.
+
+Se construyó como una vista independiente dentro de `negocio.js`
+(`renderPreviewCard()`), en vez de reusar `cliente.html` directamente, porque esa
+página exige una sesión de **cliente** (`session.role === "cliente"`) y un negocio
+logueado no tiene (ni debería crear) una cuenta de cliente solo para mirar su propia
+tarjeta. En cambio, se duplicaron los mismos helpers pequeños que ya arma la tarjeta
+en `cliente.js` (`businessPhoto()`, `avgRating()`, el manejador de fotos rotas) —
+mismo criterio que `esc()`, ya duplicada en cada archivo — así la vista previa usa
+exactamente las mismas clases CSS (`biz-card`, `slot`, `catalog-details`,
+`review-row`...) y se ve idéntica sin tener que cargar `cliente.js` entero ni tocar su
+lógica de sesión/reservas.
+
+Probado con Playwright en modo localStorage: botón abre el modal con los datos reales
+del negocio (nombre, catálogo, cupo de hoy con descuento y estilista, badge de
+escasez con 1 cupo disponible, badge de categoría, estado sin reseñas), y el botón
+"Cerrar" cierra el modal correctamente.
+
 ## Pendiente / decisiones abiertas
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo

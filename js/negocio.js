@@ -48,6 +48,127 @@
       .replace(/'/g, "&#39;");
   }
 
+  // Si la foto de un negocio en Vista previa no carga, cae de vuelta al
+  // gradiente+emoji de siempre — igual que en cliente.js.
+  window.__cupoPhotoError = function (img) {
+    img.style.display = "none";
+    const gallery = img.parentElement;
+    if (!gallery) return;
+    const allHidden = Array.from(gallery.querySelectorAll("img")).every((im) => im.style.display === "none");
+    if (allHidden) {
+      gallery.outerHTML = `<div class="biz-photo" style="background:${gallery.dataset.fallbackCss}"><span class="photo-icon">${gallery.dataset.fallbackEmoji}</span></div>`;
+    }
+  };
+
+  // Mismo cálculo que businessPhoto()/avgRating() en cliente.js — duplicado
+  // aquí para que Vista previa se vea igual sin cargar ese archivo entero.
+  function hashStr(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  function businessPhoto(b) {
+    const v = DataStore.CATEGORY_VISUALS[b.category] || { emoji: "✨", hue: 243 };
+    const h = hashStr(b.id);
+    const hue = v.hue + (h % 14) - 7;
+    const l1 = 60 - (h % 8);
+    const l2 = 42 - (h % 6);
+    return {
+      emoji: v.emoji,
+      css: `linear-gradient(135deg, hsl(${hue} 70% ${l1}%), hsl(${hue + 22} 65% ${l2}%))`,
+    };
+  }
+  function avgRating(b) {
+    const reviews = b.reviews || [];
+    if (!reviews.length) return { value: b.rating, count: 0 };
+    const value = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    return { value, count: reviews.length };
+  }
+
+  const previewModal = document.getElementById("previewModal");
+  function closePreview() {
+    previewModal.classList.remove("show");
+  }
+  document.getElementById("closePreviewBtn").addEventListener("click", closePreview);
+  document.getElementById("closePreviewBtn2").addEventListener("click", closePreview);
+  previewModal.addEventListener("click", (e) => { if (e.target === previewModal) closePreview(); });
+
+  function renderPreviewCard() {
+    const b = business;
+    const todayStart = DataStore.startOfDay(Date.now());
+    const todayEnd = todayStart + 86400000;
+    const slotsForDay = b.slots.filter((s) => s.time >= todayStart && s.time < todayEnd);
+    const availableCount = slotsForDay.filter((s) => s.status === "available").length;
+    const urgencyHtml = availableCount > 0 && availableCount <= 2
+      ? `<span class="urgency-badge">¡Solo queda${availableCount === 1 ? "" : "n"} ${availableCount}!</span>`
+      : "";
+    const slotsHtml = slotsForDay.length
+      ? slotsForDay.map((s) => {
+          const cls = s.status === "available" ? "available" : "booked";
+          const priceHtml = s.originalPrice
+            ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
+            : `<span class="price">$${s.price}${s.status === "booked" ? " · ocupado" : ""}</span>`;
+          return `<div class="slot ${cls}">
+            <span class="time">${s.label}</span>
+            ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
+            <span class="price">${s.duration} min</span>
+            ${s.staffName ? `<span class="price">con ${esc(s.staffName)}</span>` : ""}
+            ${priceHtml}
+          </div>`;
+        }).join("")
+      : '<span style="color:var(--gray);font-size:13.5px">Sin horarios publicados para hoy</span>';
+
+    const photo = businessPhoto(b);
+    const rating = avgRating(b);
+
+    const photoHtml = b.photos && b.photos.length
+      ? `<div class="photo-gallery" data-fallback-emoji="${photo.emoji}" data-fallback-css="${photo.css.replace(/"/g, "&quot;")}">${b.photos.slice(0, 5).map((url) => `<img src="${esc(url)}" alt="Foto de ${esc(b.name)}" onerror="window.__cupoPhotoError(this)">`).join("")}</div>`
+      : `<div class="biz-photo" style="background:${photo.css}"><span class="photo-icon">${photo.emoji}</span></div>`;
+
+    const catalogHtml = b.servicesCatalog && b.servicesCatalog.length
+      ? `<details class="catalog-details" open>
+          <summary>Servicios y precios (${b.servicesCatalog.length})</summary>
+          ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${s.price}</span></div>`).join("")}
+        </details>`
+      : "";
+
+    const recentReviews = (b.reviews || []).slice(0, 2);
+    const reviewsHtml = `<details class="catalog-details">
+        <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
+        ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
+      </details>`;
+
+    document.getElementById("previewCardContainer").innerHTML = `<div class="biz-card">
+      ${photoHtml}
+      <div class="biz-head">
+        <div>
+          <p class="biz-name">${esc(b.name)}</p>
+          <div class="biz-meta">
+            <span>${esc(b.address)}</span>
+            <span>★ ${rating.value.toFixed(1)}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <span class="badge">${esc(b.category)}</span>
+          ${urgencyHtml}
+        </div>
+      </div>
+      ${catalogHtml}
+      <div class="slot-list">${slotsHtml}</div>
+      ${reviewsHtml}
+    </div>`;
+  }
+
+  document.getElementById("previewBtn").addEventListener("click", async () => {
+    try {
+      business = await getBusiness();
+    } catch (err) {
+      console.error("getBusiness for preview failed:", err);
+    }
+    renderPreviewCard();
+    previewModal.classList.add("show");
+  });
+
   function addServiceRow(name, price) {
     const container = document.getElementById("editServicesRows");
     const row = document.createElement("div");
