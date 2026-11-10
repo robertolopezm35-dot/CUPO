@@ -42,6 +42,8 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   `CupoStore`/`SupabaseStore` — por eso cambiar de backend no toca esos tres archivos.
 - `db/schema.sql` — el esquema completo de Postgres para Supabase (tablas, RLS,
   triggers, funciones RPC). Se corre una sola vez en el SQL Editor de Supabase.
+- `CNAME` — un archivo de una sola línea (`mycupo.com`) que le dice a GitHub Pages
+  qué dominio propio debe servir — ver "Dominio propio: mycupo.com" abajo.
 
 ## Base de datos: Supabase
 
@@ -338,11 +340,44 @@ features inspiradas en cómo otras plataformas resuelven lo mismo:
 ## Enlaces
 
 - **Repo / rama de trabajo:** `feature/cupo-web-app` en
-  https://github.com/robertolopezm35-dot/CUPO
+  https://github.com/robertolopezm35-dot/CUPO — GitHub Pages ya está activado y
+  sirviendo justo esta rama (se redeploya solo en cada push; confirmado contra el
+  historial de Actions del repo).
+- **Sitio en vivo:** https://robertolopezm35-dot.github.io/CUPO/ — y pronto
+  **https://mycupo.com**, ver "Dominio propio" abajo.
 - **Demo interactiva (Artifact, un solo archivo, mismo diseño y lógica):**
   https://claude.ai/artifact/Tye5bmxEpK3d9RZjsMNZd7
 - **Lean Canvas del proyecto (Artifact):**
   https://claude.ai/artifact/5FiGjj5526zhACDbA8KKGT
+
+## Dominio propio: mycupo.com
+
+Ya comprado. Para conectarlo a GitHub Pages:
+
+- Ya se agregó el archivo `CNAME` (en la raíz del repo, rama `feature/cupo-web-app`)
+  con el contenido `mycupo.com` — así es como GitHub Pages sabe qué dominio debe
+  servir; sin este archivo, el DNS correcto no sirve de nada.
+- **Acción pendiente tuya — en el DNS de donde compraste el dominio** (Namecheap,
+  GoDaddy, Google Domains...), agrega:
+  - 4 registros **A** para `mycupo.com` (el dominio raíz/apex) apuntando a:
+    `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
+  - (opcional, IPv6) 4 registros **AAAA** apuntando a:
+    `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`,
+    `2606:50c0:8003::153`
+  - Si también quieres que `www.mycupo.com` funcione: un registro **CNAME** para
+    el host `www` apuntando a `robertolopezm35-dot.github.io`
+- El DNS puede tardar desde minutos hasta 24 horas en propagarse. Una vez que
+  propague, ve a *Settings → Pages* del repo en GitHub: debería mostrar
+  `mycupo.com` ya verificado (lo toma solo del archivo `CNAME`) — ahí mismo marca
+  **"Enforce HTTPS"** en cuanto esa casilla deje de estar en gris (GitHub emite el
+  certificado solo, pero tarda un rato después de que el DNS ya resuelve bien).
+- Opcional pero recomendado por GitHub: agregar un registro **TXT** de verificación
+  de dominio (`_github-pages-challenge-robertolopezm35-dot.mycupo.com`) desde
+  *Settings → Pages → Add a domain* en GitHub, para que nadie más pueda reclamar
+  este dominio en otro repo. No es necesario para que el sitio funcione, solo para
+  esa capa extra de seguridad.
+- Mientras el DNS no propague, `https://robertolopezm35-dot.github.io/CUPO/` sigue
+  funcionando exactamente igual — no se rompe nada en lo que haces el cambio.
 
 ## Pendiente / decisiones abiertas
 
@@ -359,10 +394,9 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
   OneSignal, Web Push...).
 - **Fotos por subida de archivo real:** hoy el negocio pega una URL externa. Subir el
   archivo directo desde el panel necesita Supabase Storage conectado.
-- **Dominio propio:** hoy el sitio vive en la URL que te dé el hosting gratuito que
-  uses (ej. `tu-usuario.github.io/CUPO` en GitHub Pages) — comprar y conectar un
-  dominio propio (ej. `cupo.mx`) necesita una cuenta tuya en un registrador
-  (Namecheap, GoDaddy, Google Domains...) y apuntar sus DNS al hosting.
+- ~~Dominio propio~~ — **ya se compró `mycupo.com`** y ya se agregó el `CNAME` del
+  lado del repo; falta que apuntes el DNS del registrador — ver "Dominio propio:
+  mycupo.com" arriba para los registros exactos y los pasos que faltan de tu lado.
 - ~~Supabase está preparado pero no conectado~~ — **ya está conectado**, con
   credenciales reales en `js/supabase-config.js` y dos cuentas demo con historial
   cargado para presentaciones (`demo.negocio@cupo.mx` / `demo.cliente@cupo.mx`,
