@@ -686,6 +686,12 @@ cascada su negocio, cupos, ventas y reservas).
 - El "motivo" de un día cerrado se guarda en `businesses.schedule`, que es pública:
   el campo ahora avisa que cualquiera lo puede leer.
 
+**Estado (11 nov 2026):** la migración corregida ya está aplicada en el Supabase real
+(`checkSchema` sin faltantes) y la pasada en vivo completa pasó 75 de 75, incluyendo
+reservar como cliente eligiendo servicio (con descuento), agendar a mano, cancelar
+desde el negocio y desde el cliente, y que el nombre de quien agenda el negocio ya no
+es público.
+
 **Probado en vivo, todo bien:** publicar el horario (286 cupos, sin duplicados, con
 fecha vieja para que no cuenten como "nuevos" en favoritos), re-sincronizar no crea ni
 quita nada, descuento en un cupo, quitar un cupo (no regresa tras recargar), cerrar y
@@ -706,12 +712,11 @@ pusiste a mano, pero cambiar la duración de las citas recrea los cupos y se pie
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
 que no se puede crear desde aquí) — pendiente a propósito para hacerlo juntos:**
 
-- **Correr `db/migracion-horario-semanal.sql` COMPLETO en Supabase** (otra vez, si ya
-  corriste una versión anterior): sin las 3 columnas de `sales` que agrega, **no se
-  puede reservar**. Después, confirmar con `await SupabaseStore.checkSchema()` y
-  repetir la pasada en vivo de lo que dependía de eso: reservar como cliente
-  eligiendo servicio, agendar a mano, cancelar y que el nombre del cliente sea
-  privado (el script de la pasada en vivo ya está armado: solo hay que volver a correrlo).
+- ~~Correr `db/migracion-horario-semanal.sql` completo en Supabase~~ — **hecho** (11 nov
+  2026) y verificado en vivo, ver "Pasada en vivo y bugs encontrados".
+- **Borrar las cuentas de prueba** de la pasada en vivo (`prueba.*@cupo.mx`, negocio
+  "ZZ Prueba técnica (borrar)", que aparece en la lista pública): en el SQL Editor,
+  `delete from auth.users where email like 'prueba.%@cupo.mx';`.
 - **Horario semanal sin depender de que el negocio entre:** hoy los cupos se
   publican cuando el negocio abre su panel. Para que se renueven solos aunque no
   entre en semanas hace falta un proceso del lado del servidor (ej. `pg_cron` en
