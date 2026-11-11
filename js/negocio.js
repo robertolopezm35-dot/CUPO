@@ -145,7 +145,7 @@
   // ── Calendario ────────────────────────────────────────────────────────
   function renderCalendar() {
     const first = new Date(calMonth);
-    $("calTitle").textContent = first.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    $("calTitle").textContent = first.toLocaleDateString("es-MX", { month: "long", year: "numeric" }).replace(/^./, (c) => c.toUpperCase());
     const lead = (first.getDay() + 6) % 7; // semana de lunes a domingo
     const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
     const cells = [];
@@ -161,7 +161,7 @@
       if (key === selectedDate) cls.push("selected");
       if (info.closure) {
         cls.push("closed");
-        tags.push('<span class="cal-tag closed"><b>✕</b><i> Cerrado</i></span>');
+        tags.push('<span class="cal-tag closed"><b class="cal-icon">✕</b><i>Cerrado</i></span>');
         aria.push("cerrado");
       }
       if (info.booked) {
@@ -173,7 +173,7 @@
         aria.push(plural(info.free, "cupo libre", "cupos libres"));
       }
       if (info.absences.length && !info.past) {
-        tags.push('<span class="cal-tag absent"><b>!</b><i> Ausencia</i></span>');
+        tags.push('<span class="cal-tag absent"><b class="cal-icon">!</b><i>Ausencia</i></span>');
         aria.push("alguien no trabaja");
       }
       if (!info.closure && info.off && !info.booked && !info.free) {
@@ -309,8 +309,10 @@
         .map((st) => ({ name: st.name, list: slots.filter((s) => s.staffId === st.id) }))
         .concat([{ name: "Sin persona asignada", list: slots.filter((s) => !staffList.some((st) => st.id === s.staffId)) }])
         .filter((g) => g.list.length);
-      daySlots.innerHTML = groups.map((g) =>
-        `<p class="day-group">${esc(g.name)}</p><div class="slot-list">${g.list.map((s) => agendaSlotHtml(s, false)).join("")}</div>`
+      // En "Sin persona asignada" también caen las citas de alguien que ya
+      // no está en el equipo: ahí sí se enseña el nombre que traía el cupo.
+      daySlots.innerHTML = groups.map((g, i) =>
+        `<p class="day-group">${esc(g.name)}</p><div class="slot-list">${g.list.map((s) => agendaSlotHtml(s, i === groups.length - 1 && g.name === "Sin persona asignada")).join("")}</div>`
       ).join("");
     } else {
       daySlots.innerHTML = `<div class="slot-list">${slots.map((s) => agendaSlotHtml(s, true)).join("")}</div>`;
@@ -319,9 +321,15 @@
       el.addEventListener("click", () => openSlotDetail(el.dataset.slot));
     });
 
-    $("dayActions").hidden = info.past;
-    $("dayCloseBtn").hidden = !!info.closure;
-    if (info.past) $("addSlotForm").hidden = true;
+    // En un día cerrado un cupo nuevo no le saldría a ningún cliente: primero
+    // hay que reabrirlo (botón del aviso de arriba).
+    const locked = info.past || !!info.closure;
+    $("dayActions").hidden = locked;
+    if (locked) $("addSlotForm").hidden = true;
+  }
+
+  function absentOn(key, staffId) {
+    return !!staffId && S.isClosed(schedule, key, staffId);
   }
 
   // ── Publicar un cupo suelto en el día elegido ─────────────────────────
@@ -450,6 +458,10 @@
     }
     const minutes = parseInt(hourSelect.value, 10);
     const staffId = $("newStaff").value;
+    if (absentOn(selectedDate, staffId)) {
+      showToast("Esa persona no trabaja este día (lo marcaste arriba). Quita la ausencia o elige a alguien más.");
+      return;
+    }
     const flexible = serviceSelect.value === FLEX;
     let price = $("newPrice").value;
     if (flexible) {
@@ -559,6 +571,10 @@
     }
     const minutes = parseInt(editSlotHour.value, 10);
     const staffId = editSlotStaff.value;
+    if (S.isClosed(schedule, editSlotDate.value, staffId || null)) {
+      showToast("Ese día está cerrado (o esa persona no trabaja). Reábrelo primero o elige otro día.");
+      return;
+    }
     const flexible = editSlotService.value === FLEX;
     let price = $("editSlotPrice").value;
     if (flexible) {
@@ -729,7 +745,7 @@
     for (let m = from; m <= to; m += 30) values.push(m);
     if (!values.includes(selected)) values.push(selected);
     return values.sort((a, b) => a - b).map((m) =>
-      `<option value="${m}" ${m === selected ? "selected" : ""}>${m === 1440 ? "12:00 AM (medianoche)" : S.minutesLabel(m)}</option>`
+      `<option value="${m}" ${m === selected ? "selected" : ""}>${m === 1440 ? "Medianoche" : S.minutesLabel(m)}</option>`
     ).join("");
   }
 
@@ -760,7 +776,7 @@
         return `<div class="sched-rule ${error ? "invalid" : ""}" data-rule="${ri}">
           <div class="sched-days">${WEEK_ORDER.map((d) =>
             `<button type="button" class="sched-day ${rule.days.includes(d) ? "active" : ""}" data-day="${d}" aria-pressed="${rule.days.includes(d)}" aria-label="${S.WEEKDAYS_LONG[d]}">${S.WEEKDAYS_SHORT[d]}</button>`
-          ).join("")}</div>
+          ).join("")}<button type="button" class="btn-link-danger sched-remove" data-remove-rule aria-label="Quitar turno">✕</button></div>
           <div class="sched-times">
             <span>De</span>
             <select data-field="start" aria-label="Hora de entrada">${timeOptionsHtml(rule.start, 300, 1410)}</select>
@@ -768,7 +784,6 @@
             <select data-field="end" aria-label="Hora de salida">${timeOptionsHtml(rule.end, 330, 1440)}</select>
             <span>· una cita cada</span>
             <select data-field="every" aria-label="Duración de cada cita">${EVERY_OPTIONS.map((m) => `<option value="${m}" ${m === rule.every ? "selected" : ""}>${m} min</option>`).join("")}</select>
-            <button type="button" class="btn-link-danger" data-remove-rule aria-label="Quitar turno">✕</button>
           </div>
           <div class="sched-rule-info">${error ? esc(error) : `${plural(perDay, "cita", "citas")} por día · ${plural(rule.days.length, "día", "días")} a la semana`}</div>
         </div>`;

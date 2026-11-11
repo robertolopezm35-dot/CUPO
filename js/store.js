@@ -555,10 +555,14 @@ const CupoStore = (() => {
     const businesses = getBusinesses();
     let changed = false;
     businesses.forEach((b) => {
-      if (CupoSchedule.normalize(b.schedule).rules.length) {
+      const schedule = CupoSchedule.normalize(b.schedule);
+      // "Sin tocar": un negocio de ejemplo al que alguien ya le cerró un día
+      // o le quitó cupos está siendo administrado a mano — no se le reponen.
+      const untouched = !schedule.rules.length && !schedule.closures.length && !schedule.skips.length;
+      if (schedule.rules.length) {
         const r = applyPlan(b, now);
         if (r.created || r.removed) changed = true;
-      } else if (/^b\d+$/.test(b.id) && !(b.slots || []).some((s) => s.status === "available" && s.time > now)) {
+      } else if (untouched && /^b\d+$/.test(b.id) && !(b.slots || []).some((s) => s.status === "available" && s.time > now)) {
         const h = new Date(now).getHours();
         const offset = h >= 19 ? 1 : 0;
         const firstHour = offset ? 10 + (parseInt(b.id.slice(1), 10) % 5) : h + 1;

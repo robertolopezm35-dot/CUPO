@@ -780,6 +780,7 @@ footer {
   gap: 12px;
   flex-shrink: 0;
 }
+.modal-header { margin-bottom: 12px; }
 .modal-header h3 { margin: 0; }
 .modal-close {
   background: none;
@@ -1286,7 +1287,6 @@ footer {
   font-size: 17px;
   font-weight: 800;
   text-align: center;
-  text-transform: capitalize;
 }
 .cal-nav {
   width: 34px;
@@ -1365,6 +1365,7 @@ footer {
 }
 .cal-tag b { font-weight: 800; }
 .cal-tag i { font-style: normal; }
+.cal-tag .cal-icon { display: none; }
 .cal-tag.booked { background: var(--indigo); color: var(--white); }
 .cal-tag.free { background: #DCFCE7; color: #166534; }
 .cal-tag.closed { background: var(--red); color: var(--white); }
@@ -1378,6 +1379,7 @@ footer {
   .cal-day { min-height: 58px; padding: 4px 2px; align-items: center; }
   .cal-tag { padding: 0 4px; min-width: 18px; text-align: center; }
   .cal-tag i { display: none; }
+  .cal-tag .cal-icon { display: inline; }
   .cal-tag.off, .cal-tag.planned { display: none; }
 }
 
@@ -1484,6 +1486,8 @@ footer {
   color: var(--navy);
 }
 .walkin-row input:focus, .walkin-row select:focus { outline: none; border-color: var(--indigo); }
+/* El servicio va en su propio renglón: junto al nombre se cortaba el precio. */
+.walkin-row select { flex-basis: 100%; }
 
 /* ── HORARIO SEMANAL (editor) ───────────────────────────────────────────── */
 .modal.modal-wide { max-width: 640px; }
@@ -1558,7 +1562,8 @@ footer {
 }
 .sched-rule.invalid { border-color: var(--red); }
 .sched-rule.invalid .sched-rule-info { color: var(--red); font-weight: 700; }
-.sched-days { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+.sched-days { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+.sched-remove { margin-left: auto; font-size: 16px; padding: 4px 6px; flex-shrink: 0; }
 .sched-day {
   width: 32px;
   height: 32px;
@@ -1588,3 +1593,30 @@ footer {
   color: var(--navy);
 }
 .modal p.field-hint { font-size: 12px; margin: 0; }
+
+/* En celular el editor de horario necesita cada pixel: 7 días en una fila. */
+@media (max-width: 560px) {
+  .modal-overlay { padding: 12px; }
+  .modal { padding: 20px 18px; }
+  .sched-card { padding: 12px 10px; }
+  .sched-rule { padding: 10px 8px; }
+  .sched-days { gap: 4px; }
+  .sched-day { width: 28px; height: 28px; font-size: 12px; }
+}
+
+/* Tres números en una fila también en celular (panel del negocio): apilados
+   empujaban el calendario una pantalla completa hacia abajo. */
+@media (max-width: 700px) {
+  .stat-row.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .stat-row.compact .stat-card { padding: 12px 10px; }
+  .stat-row.compact .stat-card .num { font-size: 21px; }
+  .stat-row.compact .stat-card .lbl { font-size: 11.5px; line-height: 1.3; }
+}
+
+/* Un nombre largo de negocio/cliente ya no se encima con el logo. */
+.dash-user > span {
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
