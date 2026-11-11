@@ -66,7 +66,10 @@ const SupabaseStore = (() => {
       status: row.status,
       reservationId: reservation ? reservation.id : null,
       clientId: reservation ? reservation.client_id : null,
-      clientName: client ? client.first_name + " " + client.last_name : null,
+      clientName: client ? client.first_name + " " + client.last_name : (row.walkin_name || null),
+      walkinName: row.walkin_name || null,
+      scheduleKey: row.schedule_key || null,
+      flexible: !!row.flexible,
     };
   }
 
@@ -100,7 +103,20 @@ const SupabaseStore = (() => {
     };
   }
 
+  // El horario semanal necesita columnas que una base conectada antes de
+  // esta función todavía no tiene (db/migracion-horario-semanal.sql). Se
+  // detecta sola al leer cualquier negocio: mientras falten, todo lo demás
+  // sigue funcionando igual y lo nuevo avisa qué paso falta en vez de fallar
+  // con un error críptico de Postgres.
+  let scheduleSupported = false;
+  const MIGRATION_MSG = "Falta un paso en Supabase para activar esta función: corre db/migracion-horario-semanal.sql en el SQL Editor.";
+  function friendly(error) {
+    const missing = ["PGRST202", "PGRST204", "42703", "42883"].includes(error.code);
+    return missing ? MIGRATION_MSG : error.message;
+  }
+
   function mapBusiness(row, mySales) {
+    scheduleSupported = row.schedule !== undefined;
     return {
       id: row.id,
       name: row.name,
@@ -111,7 +127,12 @@ const SupabaseStore = (() => {
       rating: Number(row.rating),
       photos: row.photos || [],
       servicesCatalog: row.services_catalog || [],
-      staff: (row.staff || []).map((s) => ({ id: s.id, name: s.name })),
+      staff: (row.staff || [])
+        .slice()
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.name.localeCompare(b.name))
+        .map((s) => ({ id: s.id, name: s.name, services: Array.isArray(s.services) ? s.services : [] })),
+      schedule: CupoSchedule.normalize(row.schedule),
+      scheduleSupported,
       reviews: (row.reviews || []).map(mapReview),
       // Nunca las ventas de otros clientes — solo las propias del que
       // consulta (o ninguna, si quien consulta es el propio negocio o no
@@ -121,10 +142,14 @@ const SupabaseStore = (() => {
     };
   }
 
+  // Con * (y no una lista de columnas) a propósito: así una columna que se
+  // agrega después (reviews.photo_url, staff.services, slots.schedule_key...)
+  // llega sola en cuanto existe, y pedirla antes de que exista no truena la
+  // consulta completa.
   const BUSINESS_SELECT = `
     *,
-    staff(id, name),
-    reviews(id, client_id, client_name, rating, comment, created_at),
+    staff(*),
+    reviews(*),
     slots(*, staff(name), reservations(id, client_id, clients(first_name, last_name)))
   `;
 
@@ -228,9 +253,15 @@ const SupabaseStore = (() => {
     return { ok: true, business: { id: data.user.id, name } };
   }
 
-  async function getBusinesses() {
+  // slotsFrom/slotsTo (timestamps, opcionales): trae solo los cupos de ese
+  // rango. El panel del cliente nada más enseña los próximos 7 días, y con
+  // horarios semanales cada negocio puede tener cientos de cupos publicados.
+  async function getBusinesses({ slotsFrom, slotsTo } = {}) {
+    let query = client.from("businesses").select(BUSINESS_SELECT);
+    if (slotsFrom) query = query.gte("slots.starts_at", new Date(slotsFrom).toISOString());
+    if (slotsTo) query = query.lt("slots.starts_at", new Date(slotsTo).toISOString());
     const [{ data, error }, mySales] = await Promise.all([
-      client.from("businesses").select(BUSINESS_SELECT),
+      query,
       getMySales(),
     ]);
     if (error) throw error;
@@ -279,20 +310,34 @@ const SupabaseStore = (() => {
     };
   }
 
-  async function bookSlot(businessId, slotId) {
-    const { data, error } = await client.rpc("book_slot", { p_slot_id: slotId });
-    if (error) return { ok: false, error: error.message };
+  async function bookSlot(businessId, slotId, _client, { service } = {}) {
+    const args = { p_slot_id: slotId };
+    // Solo los cupos flexibles mandan servicio: así una base que aún no
+    // corre la migración (book_slot de un solo parámetro) sigue reservando.
+    if (service) args.p_service = service;
+    const { data, error } = await client.rpc("book_slot", args);
+    if (error) return { ok: false, error: friendly(error) };
     return { ok: true, folio: data ? data.folio : null };
   }
 
-  async function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
+  async function bookSlotManual(businessId, slotId, { clientName, service } = {}) {
+    const { data, error } = await client.rpc("book_slot_manual", {
+      p_slot_id: slotId,
+      p_client_name: clientName || "",
+      p_service: service || null,
+    });
+    if (error) return { ok: false, error: friendly(error) };
+    return { ok: true, folio: data || null };
+  }
+
+  async function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId, flexible }) {
     const offset = parseInt(dayOffset, 10) || 0;
     const startsAt = new Date(Date.now() + offset * 86400000);
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
     const basePrice = parseInt(price, 10) || 0;
     const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
     const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
-    const { error } = await client.from("slots").insert({
+    const row = {
       business_id: businessId,
       starts_at: startsAt.toISOString(),
       duration_minutes: parseInt(duration, 10) || 45,
@@ -301,29 +346,42 @@ const SupabaseStore = (() => {
       discount_pct: pct,
       service: service || null,
       staff_id: staffId || null,
-    });
+    };
+    if (scheduleSupported) Object.assign(row, flexibleFields(flexible, basePrice));
+    const { error } = await client.from("slots").insert(row);
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   }
 
-  async function updateSlot(businessId, slotId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId }) {
+  // Un cupo flexible no guarda servicio ni precio original: el precio que
+  // queda en la fila es solo el "desde" (lo calcula quien llama, que ya
+  // tiene el catálogo cargado); el real se fija en book_slot al reservar.
+  function flexibleFields(flexible, fromPrice) {
+    return flexible
+      ? { flexible: true, service: null, original_price: null, price: fromPrice }
+      : { flexible: false };
+  }
+
+  async function updateSlot(businessId, slotId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId, flexible }) {
     const offset = parseInt(dayOffset, 10) || 0;
     const startsAt = new Date(Date.now() + offset * 86400000);
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
     const basePrice = parseInt(price, 10) || 0;
     const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
     const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
+    const patch = {
+      starts_at: startsAt.toISOString(),
+      duration_minutes: parseInt(duration, 10) || 45,
+      price: finalPrice,
+      original_price: pct > 0 ? basePrice : null,
+      discount_pct: pct,
+      service: service || null,
+      staff_id: staffId || null,
+    };
+    if (scheduleSupported) Object.assign(patch, flexibleFields(flexible, basePrice));
     const { data, error } = await client
       .from("slots")
-      .update({
-        starts_at: startsAt.toISOString(),
-        duration_minutes: parseInt(duration, 10) || 45,
-        price: finalPrice,
-        original_price: pct > 0 ? basePrice : null,
-        discount_pct: pct,
-        service: service || null,
-        staff_id: staffId || null,
-      })
+      .update(patch)
       .eq("id", slotId)
       .eq("status", "available")
       .select();
@@ -345,13 +403,141 @@ const SupabaseStore = (() => {
   async function reopenSlot(businessId, slotId) {
     const { error } = await client.rpc("reopen_slot", { p_slot_id: slotId });
     if (error) return { ok: false, error: error.message };
+    if (scheduleSupported) {
+      // Si ese día ya está cerrado, el cupo liberado no debe quedar
+      // reservable: se quita (igual que freeSlot en store.js).
+      const [{ data: slot }, schedule] = await Promise.all([
+        client.from("slots").select("*").eq("id", slotId).maybeSingle(),
+        readSchedule(businessId),
+      ]);
+      if (slot && schedule && CupoSchedule.isClosed(schedule, CupoSchedule.dateKey(new Date(slot.starts_at).getTime()), slot.staff_id)) {
+        await client.from("slots").delete().eq("id", slotId).eq("status", "available");
+      }
+    }
     return { ok: true };
   }
 
   async function removeSlot(businessId, slotId) {
+    const { data: slot } = await client.from("slots").select("*").eq("id", slotId).maybeSingle();
+    if (slot && slot.schedule_key) {
+      // Quitado a mano: se anota para que el horario no lo vuelva a publicar.
+      const result = await mutateSchedule(businessId, (schedule) => { schedule.skips.push(slot.schedule_key); });
+      if (!result.ok) return result;
+    }
     const { error } = await client.from("slots").delete().eq("id", slotId).eq("status", "available");
     if (error) return { ok: false, error: error.message };
     return { ok: true };
+  }
+
+  async function readSchedule(businessId) {
+    const { data, error } = await client.from("businesses").select("*").eq("id", businessId).single();
+    if (error || !data || data.schedule === undefined) return null;
+    return CupoSchedule.normalize(data.schedule);
+  }
+
+  async function mutateSchedule(businessId, change) {
+    const schedule = await readSchedule(businessId);
+    if (!schedule) return { ok: false, error: MIGRATION_MSG };
+    change(schedule);
+    const { error } = await client
+      .from("businesses")
+      .update({ schedule: CupoSchedule.prune(schedule, Date.now()) })
+      .eq("id", businessId);
+    if (error) return { ok: false, error: friendly(error) };
+    return { ok: true };
+  }
+
+  async function saveSchedule(businessId, { rules, staffServices } = {}) {
+    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    const cleaned = CupoSchedule.normalize({ rules }).rules;
+    if (cleaned.length !== (rules || []).length) {
+      return { ok: false, error: "Revisa los turnos: hay alguno incompleto." };
+    }
+    const saved = await mutateSchedule(businessId, (schedule) => { schedule.rules = cleaned; });
+    if (!saved.ok) return saved;
+    for (const [staffId, services] of Object.entries(staffServices || {})) {
+      if (!Array.isArray(services)) continue;
+      const { error } = await client.from("staff").update({ services }).eq("id", staffId).eq("business_id", businessId);
+      if (error) return { ok: false, error: friendly(error) };
+    }
+    return syncSchedule(businessId);
+  }
+
+  // Publica los cupos que falten del horario semanal (próximas 4 semanas) y
+  // quita los que sobren. Solo lo puede hacer el propio negocio (RLS), así
+  // que corre cada vez que abre su panel — ver CLAUDE.md "Horario semanal".
+  async function syncSchedule(businessId) {
+    if (!scheduleSupported) return { ok: true, created: 0, removed: 0 };
+    const business = await getBusinessById(businessId);
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
+    const { toCreate, toRemove } = CupoSchedule.plan(business, Date.now());
+
+    for (let i = 0; i < toRemove.length; i += 80) {
+      const { error } = await client.from("slots").delete().in("id", toRemove.slice(i, i + 80)).eq("status", "available");
+      if (error) return { ok: false, error: friendly(error) };
+    }
+
+    const rows = toCreate.map((c) => ({
+      business_id: businessId,
+      starts_at: new Date(c.time).toISOString(),
+      duration_minutes: c.duration,
+      price: CupoSchedule.fromPrice(CupoSchedule.slotOptions(business, { flexible: true, status: "available", staffId: c.staffId })),
+      staff_id: c.staffId,
+      schedule_key: c.scheduleKey,
+      flexible: true,
+      // Fecha vieja a propósito: publicar de golpe los cupos de un mes no
+      // es "un cupo nuevo" para el aviso de favoritos (HU-11). Si alguien
+      // cancela después, reopen_slot sí le pone la fecha del momento.
+      created_at: "2000-01-01T00:00:00Z",
+    }));
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await client
+        .from("slots")
+        .upsert(rows.slice(i, i + 200), { onConflict: "business_id,schedule_key", ignoreDuplicates: true });
+      if (error) return { ok: false, error: friendly(error) };
+    }
+    return { ok: true, created: toCreate.length, removed: toRemove.length };
+  }
+
+  async function closeDay(businessId, { date, dateTo, staffId, reason } = {}) {
+    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    if (!date || date < CupoSchedule.dateKey(Date.now())) return { ok: false, error: "No puedes cerrar un día que ya pasó." };
+    const who = staffId || null;
+    const dates = CupoSchedule.dateRange(date, dateTo);
+    const saved = await mutateSchedule(businessId, (schedule) => {
+      schedule.closures = schedule.closures.filter((c) => !(dates.includes(c.date) && (who === null || c.staffId === who)));
+      dates.forEach((d) => schedule.closures.push({ date: d, staffId: who, reason: (reason || "").trim() }));
+    });
+    if (!saved.ok) return saved;
+
+    const rangeStart = new Date(CupoSchedule.parseDateKey(dates[0]));
+    const rangeEnd = new Date(CupoSchedule.parseDateKey(dates[dates.length - 1]));
+    rangeEnd.setDate(rangeEnd.getDate() + 1);
+    let query = client
+      .from("slots")
+      .delete()
+      .eq("business_id", businessId)
+      .eq("status", "available")
+      .gte("starts_at", rangeStart.toISOString())
+      .lt("starts_at", rangeEnd.toISOString());
+    if (who) query = query.eq("staff_id", who);
+    const { data, error } = await query.select("id");
+    if (error) return { ok: false, error: friendly(error) };
+    const synced = await syncSchedule(businessId);
+    if (!synced.ok) return synced;
+    return { ok: true, removed: (data || []).length, days: dates.length };
+  }
+
+  async function reopenDay(businessId, { date, staffId } = {}) {
+    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    const who = staffId || null;
+    const saved = await mutateSchedule(businessId, (schedule) => {
+      schedule.closures = schedule.closures.filter((c) => !(c.date === date && c.staffId === who));
+    });
+    if (!saved.ok) return saved;
+    const synced = await syncSchedule(businessId);
+    if (!synced.ok) return synced;
+    return { ok: true, created: synced.created };
   }
 
   async function cancelReservation(clientId, businessId, slotId, reservationId) {
@@ -534,10 +720,15 @@ const SupabaseStore = (() => {
     getBusinessById,
     getClientById,
     bookSlot,
+    bookSlotManual,
     addSlot,
     updateSlot,
     reopenSlot,
     removeSlot,
+    saveSchedule,
+    syncSchedule,
+    closeDay,
+    reopenDay,
     cancelReservation,
     updateBusiness,
     getSales,

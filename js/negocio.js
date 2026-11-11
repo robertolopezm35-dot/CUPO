@@ -16,22 +16,21 @@
     return;
   }
 
-  document.getElementById("userName").textContent = business.name;
-  document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
-  document.getElementById("bizTitle").textContent = business.name;
+  const S = CupoSchedule;
+  const DAY_MS = 86400000;
+  const FLEX = "__flex__";
+  const $ = (id) => document.getElementById(id);
 
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
+  function setHeader() {
+    $("userName").textContent = business.name;
+    $("userAvatar").textContent = business.name.charAt(0).toUpperCase();
+    $("bizTitle").textContent = business.name;
+  }
+  setHeader();
+
+  $("logoutBtn").addEventListener("click", async () => {
     await DataStore.clearSession();
     window.location.href = "index.html";
-  });
-
-  const editModal = document.getElementById("editModal");
-  const editCategorySelect = document.getElementById("editCategory");
-  DataStore.CATEGORIES.forEach((cat) => {
-    const opt = document.createElement("option");
-    opt.value = cat;
-    opt.textContent = cat;
-    editCategorySelect.appendChild(opt);
   });
 
   // Escapa texto controlado por clientes (nombre, estilista asignado) antes
@@ -48,6 +47,1049 @@
       .replace(/'/g, "&#39;");
   }
 
+  function showToast(msg) {
+    const toast = $("toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => toast.classList.remove("show"), Math.max(2200, msg.length * 55));
+  }
+
+  function plural(n, one, many) {
+    return n + " " + (n === 1 ? one : many);
+  }
+
+  // ── Fechas ────────────────────────────────────────────────────────────
+  function todayKey() {
+    return S.dateKey(Date.now());
+  }
+
+  function dayRange(key) {
+    const start = S.parseDateKey(key);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return [start, end.getTime()];
+  }
+
+  function dayOffsetOf(key) {
+    return Math.round((S.parseDateKey(key) - S.startOfDay(Date.now())) / DAY_MS);
+  }
+
+  function longDate(key) {
+    const d = new Date(S.parseDateKey(key));
+    const opts = { weekday: "long", day: "numeric", month: "long" };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString("es-MX", opts);
+  }
+
+  function shortDate(ts) {
+    return new Date(ts).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
+  }
+
+  function slotEnd(s) {
+    return s.time + (s.duration || 0) * 60000;
+  }
+
+  let selectedDate = todayKey();
+  let calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+  let dayIndex = new Map();
+  let schedule = S.normalize(business.schedule);
+
+  // Un solo recorrido de todos los cupos por render: cuántas citas y cuántos
+  // cupos libres tiene cada día (el calendario pinta ~30 celdas de aquí).
+  function buildDayIndex() {
+    const now = Date.now();
+    schedule = S.normalize(business.schedule);
+    dayIndex = new Map();
+    business.slots.forEach((s) => {
+      const key = S.dateKey(s.time);
+      if (!dayIndex.has(key)) dayIndex.set(key, { booked: 0, free: 0 });
+      const entry = dayIndex.get(key);
+      if (s.status === "booked") entry.booked++;
+      else if (slotEnd(s) > now) entry.free++;
+    });
+  }
+
+  function dayInfo(key) {
+    const counts = dayIndex.get(key) || { booked: 0, free: 0 };
+    const today = todayKey();
+    const weekday = new Date(S.parseDateKey(key)).getDay();
+    const rules = S.activeRules(business);
+    const worksThatWeekday = rules.some((r) => r.days.includes(weekday));
+    const closure = schedule.closures.find((c) => c.date === key && c.staffId === null) || null;
+    const staffIds = new Set((business.staff || []).map((st) => st.id));
+    return {
+      booked: counts.booked,
+      free: counts.free,
+      past: key < today,
+      today: key === today,
+      closure,
+      absences: closure ? [] : schedule.closures.filter((c) => c.date === key && c.staffId && staffIds.has(c.staffId)),
+      off: rules.length > 0 && !worksThatWeekday,
+      planned: worksThatWeekday && !closure && key > today && !counts.booked && !counts.free,
+    };
+  }
+
+  // Lo que se enseña de un día: en días pasados solo las citas que hubo; de
+  // hoy en adelante, citas + cupos libres que todavía no terminan.
+  function slotsOn(key) {
+    const [start, end] = dayRange(key);
+    const now = Date.now();
+    const past = key < todayKey();
+    return business.slots
+      .filter((s) => s.time >= start && s.time < end)
+      .filter((s) => s.status === "booked" || (!past && slotEnd(s) > now))
+      .sort((a, b) => a.time - b.time);
+  }
+
+  // ── Calendario ────────────────────────────────────────────────────────
+  function renderCalendar() {
+    const first = new Date(calMonth);
+    $("calTitle").textContent = first.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+    const lead = (first.getDay() + 6) % 7; // semana de lunes a domingo
+    const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<span class="cal-day blank"></span>');
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = S.dateKey(new Date(first.getFullYear(), first.getMonth(), d).getTime());
+      const info = dayInfo(key);
+      const cls = ["cal-day"];
+      const tags = [];
+      const aria = [longDate(key)];
+      if (info.today) { cls.push("today"); aria.push("hoy"); }
+      if (info.past) cls.push("past");
+      if (key === selectedDate) cls.push("selected");
+      if (info.closure) {
+        cls.push("closed");
+        tags.push('<span class="cal-tag closed"><b>✕</b><i> Cerrado</i></span>');
+        aria.push("cerrado");
+      }
+      if (info.booked) {
+        tags.push(`<span class="cal-tag booked"><b>${info.booked}</b><i> ${info.booked === 1 ? "cita" : "citas"}</i></span>`);
+        aria.push(plural(info.booked, "cita", "citas"));
+      }
+      if (info.free && !info.past) {
+        tags.push(`<span class="cal-tag free"><b>${info.free}</b><i> ${info.free === 1 ? "libre" : "libres"}</i></span>`);
+        aria.push(plural(info.free, "cupo libre", "cupos libres"));
+      }
+      if (info.absences.length && !info.past) {
+        tags.push('<span class="cal-tag absent"><b>!</b><i> Ausencia</i></span>');
+        aria.push("alguien no trabaja");
+      }
+      if (!info.closure && info.off && !info.booked && !info.free) {
+        cls.push("off");
+        if (!info.past) tags.push('<span class="cal-tag off"><i>Descanso</i></span>');
+        aria.push("no se trabaja");
+      }
+      if (info.planned) tags.push('<span class="cal-tag planned"><i>Programado</i></span>');
+      cells.push(`<button type="button" class="${cls.join(" ")}" data-date="${key}" aria-label="${esc(aria.join(", "))}" aria-pressed="${key === selectedDate}">
+        <span class="cal-num">${d}</span>${tags.join("")}
+      </button>`);
+    }
+    $("calGrid").innerHTML = cells.join("");
+    $("calGrid").querySelectorAll("button.cal-day").forEach((btn) => {
+      btn.addEventListener("click", () => selectDay(btn.dataset.date));
+    });
+  }
+
+  function selectDay(key) {
+    selectedDate = key;
+    const d = new Date(S.parseDateKey(key));
+    calMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+    $("addSlotForm").hidden = true;
+    renderCalendar();
+    renderDay();
+  }
+
+  function shiftMonth(delta) {
+    const d = new Date(calMonth);
+    calMonth = new Date(d.getFullYear(), d.getMonth() + delta, 1).getTime();
+    renderCalendar();
+  }
+  $("calPrev").addEventListener("click", () => shiftMonth(-1));
+  $("calNext").addEventListener("click", () => shiftMonth(1));
+  $("calTodayBtn").addEventListener("click", () => selectDay(todayKey()));
+
+  // ── Panel del día ─────────────────────────────────────────────────────
+  function priceHtml(d) {
+    const amount = (d.from ? "desde " : "") + "$" + d.price;
+    return d.originalPrice
+      ? `<s>$${d.originalPrice}</s> ${amount}`
+      : amount;
+  }
+
+  function agendaSlotHtml(s, showStaff) {
+    const d = S.describeSlot(business, s);
+    const staff = showStaff && s.staffName ? `<span class="price">${esc(s.staffName)}</span>` : "";
+    if (s.status === "booked") {
+      return `<div class="slot mine" data-slot="${s.id}" title="Clic para ver la cita">
+        <span class="time">${s.label}</span>
+        ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
+        <span class="price">$${s.price}</span>
+        ${staff}
+        <span class="price">${esc(s.clientName || "Reservado")}</span>
+      </div>`;
+    }
+    if (!d.bookable) {
+      return `<div class="slot available warn" data-slot="${s.id}" title="Agrega servicios con precio en Editar negocio para que se pueda reservar">
+        <span class="time">${s.label}</span>
+        <span class="price">Sin servicios</span>
+        ${staff}
+      </div>`;
+    }
+    return `<div class="slot available" data-slot="${s.id}" title="Clic para editar, agendar o quitar">
+      <span class="time">${s.label}</span>
+      ${d.service ? `<span class="price">${esc(d.service)}</span>` : ""}
+      <span class="price">${priceHtml(d)}${s.discountPct > 0 ? ` <span class="discount-badge">-${s.discountPct}%</span>` : ""}</span>
+      ${staff}
+      <span class="price">Disponible</span>
+    </div>`;
+  }
+
+  function renderDay() {
+    const key = selectedDate;
+    const info = dayInfo(key);
+    const slots = slotsOn(key);
+    const staffList = business.staff || [];
+    const staffName = (id) => (staffList.find((st) => st.id === id) || {}).name || "Alguien";
+
+    $("dayTitle").textContent = longDate(key).replace(/^./, (c) => c.toUpperCase());
+    const summary = [];
+    if (info.booked) summary.push(plural(info.booked, "cita", "citas"));
+    if (info.free && !info.past) summary.push(plural(info.free, "cupo libre", "cupos libres"));
+    $("daySummary").textContent = summary.length ? summary.join(" · ") : (info.past ? "Sin citas ese día" : "Sin citas ni cupos");
+
+    const badge = info.today ? "Hoy" : info.past ? "Pasado" : info.closure ? "Cerrado" : info.off ? "No se trabaja" : "";
+    $("dayBadge").innerHTML = badge ? `<span class="badge">${badge}</span>` : "";
+
+    const notices = [];
+    if (info.closure) {
+      const pending = info.booked && !info.past
+        ? ` Tienes ${plural(info.booked, "cita reservada", "citas reservadas")}: no se cancelan solas, tócalas si necesitas cancelarlas.`
+        : "";
+      notices.push(`<div class="day-notice closed">
+        <span>🔒 Día cerrado${info.closure.reason ? ": " + esc(info.closure.reason) : ""}.${pending}</span>
+        ${info.past ? "" : '<button type="button" class="btn btn-outline btn-sm" data-reopen="">Reabrir</button>'}
+      </div>`);
+    }
+    info.absences.forEach((c) => {
+      notices.push(`<div class="day-notice">
+        <span>🙅 ${esc(staffName(c.staffId))} no trabaja este día${c.reason ? ": " + esc(c.reason) : ""}.</span>
+        ${info.past ? "" : `<button type="button" class="btn btn-outline btn-sm" data-reopen="${esc(c.staffId)}">Quitar</button>`}
+      </div>`);
+    });
+    if (!info.closure && info.off && !info.past) {
+      notices.push('<div class="day-notice info"><span>Según tu horario semanal este día no se trabaja. Aun así puedes publicar un cupo suelto.</span></div>');
+    }
+    if (info.past) {
+      notices.push('<div class="day-notice info"><span>Día pasado: solo se muestran las citas que tuviste.</span></div>');
+    }
+    $("dayNotices").innerHTML = notices.join("");
+    $("dayNotices").querySelectorAll("[data-reopen]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const result = await DataStore.reopenDay(business.id, { date: key, staffId: btn.dataset.reopen || null });
+        if (!result.ok) {
+          btn.disabled = false;
+          showToast(result.error || "No se pudo reabrir. Intenta de nuevo.");
+          return;
+        }
+        showToast(result.created ? `Listo: ${plural(result.created, "cupo publicado", "cupos publicados")} de nuevo.` : "Listo, día reabierto.");
+        await render({ silent: true });
+      });
+    });
+
+    const daySlots = $("daySlots");
+    if (!slots.length) {
+      daySlots.innerHTML = info.past || info.closure
+        ? ""
+        : '<div class="empty-state">No hay cupos este día. Agrega uno suelto aquí abajo, o programa tu Horario semanal para que se publiquen solos.</div>';
+    } else if (staffList.length) {
+      const groups = staffList
+        .map((st) => ({ name: st.name, list: slots.filter((s) => s.staffId === st.id) }))
+        .concat([{ name: "Sin persona asignada", list: slots.filter((s) => !staffList.some((st) => st.id === s.staffId)) }])
+        .filter((g) => g.list.length);
+      daySlots.innerHTML = groups.map((g) =>
+        `<p class="day-group">${esc(g.name)}</p><div class="slot-list">${g.list.map((s) => agendaSlotHtml(s, false)).join("")}</div>`
+      ).join("");
+    } else {
+      daySlots.innerHTML = `<div class="slot-list">${slots.map((s) => agendaSlotHtml(s, true)).join("")}</div>`;
+    }
+    daySlots.querySelectorAll(".slot").forEach((el) => {
+      el.addEventListener("click", () => openSlotDetail(el.dataset.slot));
+    });
+
+    $("dayActions").hidden = info.past;
+    $("dayCloseBtn").hidden = !!info.closure;
+    if (info.past) $("addSlotForm").hidden = true;
+  }
+
+  // ── Publicar un cupo suelto en el día elegido ─────────────────────────
+  const hourSelect = $("newHour");
+  const serviceSelect = $("newService");
+  const editSlotHour = $("editSlotHour");
+  const editSlotService = $("editSlotService");
+  const editSlotStaff = $("editSlotStaff");
+  const editSlotDate = $("editSlotDate");
+
+  function populateTimeOptions(select) {
+    select.innerHTML = "";
+    for (let m = 6 * 60; m <= 22 * 60 + 30; m += 30) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = S.minutesLabel(m);
+      select.appendChild(opt);
+    }
+  }
+
+  // Los cupos del horario pueden caer en minutos que el selector no trae
+  // (9:45, 10:20...): se agrega esa opción para poder mostrarla tal cual.
+  function setTimeValue(select, minutes) {
+    if (![...select.options].some((o) => parseInt(o.value, 10) === minutes)) {
+      const opt = document.createElement("option");
+      opt.value = minutes;
+      opt.textContent = S.minutesLabel(minutes);
+      const after = [...select.options].find((o) => parseInt(o.value, 10) > minutes);
+      select.insertBefore(opt, after || null);
+    }
+    select.value = String(minutes);
+  }
+
+  function catalogPrice(name) {
+    const item = (business.servicesCatalog || []).find((s) => s.name === name);
+    return item ? item.price : null;
+  }
+
+  // Servicios para un cupo: primero los del catálogo propio del negocio
+  // (con su precio), luego los sugeridos de su categoría. Si hay catálogo,
+  // también "el cliente elige": un cupo flexible que ofrece todos.
+  function populateServiceOptions(select, keep) {
+    const current = keep !== undefined ? keep : select.value;
+    const catalog = (business.servicesCatalog || []).map((s) => s.name).filter(Boolean);
+    const names = Array.from(new Set(catalog.concat(DataStore.SERVICES_BY_CATEGORY[business.category] || [])));
+    if (current && current !== FLEX && !names.includes(current)) names.push(current);
+    select.innerHTML = "";
+    if (catalog.length && business.scheduleSupported !== false) {
+      const opt = document.createElement("option");
+      opt.value = FLEX;
+      opt.textContent = "✨ El cliente elige (cualquiera de mis servicios)";
+      select.appendChild(opt);
+    }
+    names.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
+    else if (names.length) select.value = names[0];
+  }
+
+  function populateStaffOptions(select, keep) {
+    const current = keep !== undefined ? keep : select.value;
+    select.innerHTML = '<option value="">Sin preferencia</option>';
+    (business.staff || []).forEach((st) => {
+      const opt = document.createElement("option");
+      opt.value = st.id;
+      opt.textContent = st.name;
+      select.appendChild(opt);
+    });
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
+  }
+
+  // Con "el cliente elige" el precio sale del catálogo, así que el campo se
+  // apaga; con un servicio del catálogo se sugiere su precio.
+  function syncPriceField(select, priceInput, suggest) {
+    const flexible = select.value === FLEX;
+    priceInput.disabled = flexible;
+    if (flexible) {
+      priceInput.value = "";
+      priceInput.placeholder = "Según el servicio";
+    } else {
+      priceInput.placeholder = "";
+      const known = catalogPrice(select.value);
+      if (suggest && known != null) priceInput.value = known;
+      else if (priceInput.value === "") priceInput.value = known != null ? known : 200;
+    }
+  }
+
+  function flexibleFromPrice(staffId) {
+    const options = S.slotOptions(business, { flexible: true, status: "available", staffId: staffId || null });
+    return options.length ? S.fromPrice(options) : null;
+  }
+
+  populateTimeOptions(hourSelect);
+  populateTimeOptions(editSlotHour);
+  serviceSelect.addEventListener("change", () => syncPriceField(serviceSelect, $("newPrice"), true));
+  editSlotService.addEventListener("change", () => syncPriceField(editSlotService, $("editSlotPrice"), true));
+
+  $("dayAddBtn").addEventListener("click", () => {
+    const form = $("addSlotForm");
+    form.hidden = !form.hidden;
+    if (form.hidden) return;
+    populateServiceOptions(serviceSelect);
+    populateStaffOptions($("newStaff"));
+    syncPriceField(serviceSelect, $("newPrice"), false);
+    if (selectedDate === todayKey()) {
+      const now = new Date();
+      const next = Math.min(22 * 60 + 30, Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 30) * 30);
+      setTimeValue(hourSelect, Math.max(6 * 60, next));
+    } else if (!hourSelect.dataset.touched) {
+      setTimeValue(hourSelect, 10 * 60);
+    }
+    form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  hourSelect.addEventListener("change", () => { hourSelect.dataset.touched = "1"; });
+
+  const addSlotBtn = $("addSlotBtn");
+  addSlotBtn.addEventListener("click", async () => {
+    const dayOffset = dayOffsetOf(selectedDate);
+    if (dayOffset < 0) {
+      showToast("No puedes publicar un cupo en un día que ya pasó.");
+      return;
+    }
+    const minutes = parseInt(hourSelect.value, 10);
+    const staffId = $("newStaff").value;
+    const flexible = serviceSelect.value === FLEX;
+    let price = $("newPrice").value;
+    if (flexible) {
+      price = flexibleFromPrice(staffId);
+      if (price == null) {
+        showToast("Esa persona no tiene servicios con precio. Revisa tu catálogo y el Horario semanal.");
+        return;
+      }
+    }
+    addSlotBtn.disabled = true;
+    const result = await DataStore.addSlot(business.id, {
+      hour: Math.floor(minutes / 60),
+      minute: minutes % 60,
+      duration: $("newDuration").value,
+      price,
+      service: flexible ? null : serviceSelect.value,
+      dayOffset,
+      discountPct: $("newDiscount").value,
+      staffId,
+      flexible,
+    });
+    addSlotBtn.disabled = false;
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo publicar. Intenta de nuevo.");
+      return;
+    }
+    showToast("Cupo publicado.");
+    await render({ silent: true });
+  });
+
+  // ── Detalle de un cupo: editar, quitar, agendar a mano, cancelar cita ──
+  const slotDetailModal = $("slotDetailModal");
+  let detailSlotId = null;
+
+  function closeSlotDetail() {
+    slotDetailModal.classList.remove("show");
+    detailSlotId = null;
+  }
+  $("closeSlotDetailBtn").addEventListener("click", closeSlotDetail);
+  $("cancelSlotDetailBtn").addEventListener("click", closeSlotDetail);
+  slotDetailModal.addEventListener("click", (e) => { if (e.target === slotDetailModal) closeSlotDetail(); });
+
+  function openSlotDetail(slotId) {
+    const slot = business.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    detailSlotId = slotId;
+    const available = slot.status === "available";
+    $("slotDetailEditable").hidden = !available;
+    $("slotDetailBookedInfo").hidden = available;
+    $("slotDetailActionsAvailable").hidden = !available;
+    $("slotDetailActionsBooked").hidden = available;
+
+    if (available) {
+      $("slotDetailTitle").textContent = "Detalles del cupo";
+      const generated = !!slot.scheduleKey;
+      $("slotDetailScheduleNote").hidden = !generated;
+      populateServiceOptions(editSlotService, slot.flexible ? FLEX : (slot.service || ""));
+      populateStaffOptions(editSlotStaff, slot.staffId || "");
+      editSlotDate.min = todayKey();
+      editSlotDate.value = S.dateKey(slot.time);
+      const t = new Date(slot.time);
+      setTimeValue(editSlotHour, t.getHours() * 60 + t.getMinutes());
+      $("editSlotDuration").value = slot.duration;
+      $("editSlotPrice").value = slot.flexible ? "" : (slot.originalPrice || slot.price);
+      $("editSlotDiscount").value = slot.discountPct || 0;
+      syncPriceField(editSlotService, $("editSlotPrice"), false);
+      [editSlotDate, editSlotHour, $("editSlotDuration"), editSlotStaff].forEach((el) => { el.disabled = generated; });
+
+      $("walkinName").value = "";
+      const options = S.slotOptions(business, slot);
+      const walkinService = $("walkinService");
+      walkinService.hidden = !(slot.flexible && options.length > 1);
+      walkinService.innerHTML = options.map((o) => `<option value="${esc(o.name)}">${esc(o.name)} — $${o.price}</option>`).join("");
+    } else {
+      $("slotDetailTitle").textContent = "Cita reservada";
+      const upcoming = slotEnd(slot) > Date.now();
+      $("slotDetailBookedInfo").textContent =
+        `${slot.clientName || "Un cliente"}${slot.walkinName ? " (agendado por ti)" : ""} · ` +
+        `${slot.service ? slot.service + " · " : ""}${shortDate(slot.time)}, ${slot.label}` +
+        `${slot.staffName ? " · con " + slot.staffName : ""} · $${slot.price}.` +
+        (upcoming ? " Si cancelas la cita, el cupo vuelve a quedar libre para alguien más." : "");
+      $("reopenSlotBtn").hidden = !upcoming;
+    }
+    slotDetailModal.classList.add("show");
+  }
+
+  $("deleteSlotBtn").addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    const slot = business.slots.find((s) => s.id === detailSlotId);
+    const result = await DataStore.removeSlot(business.id, detailSlotId);
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo eliminar. Intenta de nuevo.");
+      return;
+    }
+    closeSlotDetail();
+    showToast(slot && slot.scheduleKey ? "Cupo quitado. Tu horario no lo volverá a publicar ese día." : "Cupo eliminado.");
+    await render({ silent: true });
+  });
+
+  const saveSlotBtn = $("saveSlotBtn");
+  saveSlotBtn.addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    const dayOffset = editSlotDate.value ? dayOffsetOf(editSlotDate.value) : -1;
+    if (dayOffset < 0) {
+      showToast("Elige un día de hoy en adelante.");
+      return;
+    }
+    const minutes = parseInt(editSlotHour.value, 10);
+    const staffId = editSlotStaff.value;
+    const flexible = editSlotService.value === FLEX;
+    let price = $("editSlotPrice").value;
+    if (flexible) {
+      price = flexibleFromPrice(staffId);
+      if (price == null) {
+        showToast("Esa persona no tiene servicios con precio. Revisa tu catálogo y el Horario semanal.");
+        return;
+      }
+    }
+    saveSlotBtn.disabled = true;
+    const result = await DataStore.updateSlot(business.id, detailSlotId, {
+      hour: Math.floor(minutes / 60),
+      minute: minutes % 60,
+      duration: $("editSlotDuration").value,
+      price,
+      service: flexible ? null : editSlotService.value,
+      dayOffset,
+      discountPct: $("editSlotDiscount").value,
+      staffId,
+      flexible,
+    });
+    saveSlotBtn.disabled = false;
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo guardar. Intenta de nuevo.");
+      return;
+    }
+    closeSlotDetail();
+    showToast("Cupo actualizado.");
+    await render({ silent: true });
+  });
+
+  const walkinBtn = $("walkinBtn");
+  async function bookWalkin() {
+    if (!detailSlotId) return;
+    const clientName = $("walkinName").value.trim();
+    if (!clientName) {
+      showToast("Escribe el nombre del cliente.");
+      $("walkinName").focus();
+      return;
+    }
+    const walkinService = $("walkinService");
+    walkinBtn.disabled = true;
+    const result = await DataStore.bookSlotManual(business.id, detailSlotId, {
+      clientName,
+      service: walkinService.hidden ? null : walkinService.value,
+    });
+    walkinBtn.disabled = false;
+    if (!result.ok) {
+      showToast(result.error || "No se pudo agendar. Intenta de nuevo.");
+      await render({ silent: true });
+      return;
+    }
+    closeSlotDetail();
+    showToast(`Cita agendada para ${clientName}.`);
+    await render({ silent: true });
+  }
+  walkinBtn.addEventListener("click", bookWalkin);
+  $("walkinName").addEventListener("keydown", (e) => { if (e.key === "Enter") bookWalkin(); });
+
+  const reopenSlotBtn = $("reopenSlotBtn");
+  reopenSlotBtn.addEventListener("click", async () => {
+    if (!detailSlotId) return;
+    const slot = business.slots.find((s) => s.id === detailSlotId);
+    if (!window.confirm(`¿Cancelar la cita de ${slot && slot.clientName ? slot.clientName : "este cliente"}? El cupo queda libre otra vez.`)) return;
+    reopenSlotBtn.disabled = true;
+    const result = await DataStore.reopenSlot(business.id, detailSlotId);
+    reopenSlotBtn.disabled = false;
+    if (result && result.ok === false) {
+      showToast(result.error || "No se pudo cancelar. Intenta de nuevo.");
+      return;
+    }
+    closeSlotDetail();
+    showToast("Cita cancelada.");
+    await render({ silent: true });
+  });
+
+  // ── Cerrar un día (o varios seguidos) ─────────────────────────────────
+  const closeDayModal = $("closeDayModal");
+  function closeCloseDay() {
+    closeDayModal.classList.remove("show");
+  }
+  $("closeCloseDayBtn").addEventListener("click", closeCloseDay);
+  $("cancelCloseDayBtn").addEventListener("click", closeCloseDay);
+  closeDayModal.addEventListener("click", (e) => { if (e.target === closeDayModal) closeCloseDay(); });
+
+  function updateCloseDayWarning() {
+    const who = $("closeDayWho").value || null;
+    const dates = S.dateRange(selectedDate, $("closeDayTo").value);
+    const start = S.parseDateKey(dates[0]);
+    const end = dayRange(dates[dates.length - 1])[1];
+    const affected = business.slots.filter((s) => s.time >= start && s.time < end && (!who || s.staffId === who));
+    const free = affected.filter((s) => s.status === "available").length;
+    const booked = affected.filter((s) => s.status === "booked").length;
+    const parts = [];
+    if (dates.length > 1) parts.push(`Se cierran ${dates.length} días seguidos.`);
+    parts.push(free ? `Se ${free === 1 ? "quitará 1 cupo libre" : "quitarán " + free + " cupos libres"}.` : "No hay cupos libres que quitar.");
+    if (booked) parts.push(`Hay ${plural(booked, "cita ya reservada", "citas ya reservadas")}: no se cancelan solas, cancélalas tú desde el calendario si hace falta.`);
+    $("closeDayWarning").textContent = parts.join(" ");
+    $("confirmCloseDayBtn").textContent = dates.length > 1 ? `Cerrar ${dates.length} días` : "Cerrar día";
+  }
+  $("closeDayWho").addEventListener("change", updateCloseDayWarning);
+  $("closeDayTo").addEventListener("change", updateCloseDayWarning);
+
+  $("dayCloseBtn").addEventListener("click", () => {
+    $("closeDayText").textContent = "Vas a cerrar el " + longDate(selectedDate) + ". Ese día no se publican cupos y se quitan los que seguían libres.";
+    $("closeDayTo").value = "";
+    $("closeDayTo").min = selectedDate;
+    $("closeDayReason").value = "";
+    const staffList = business.staff || [];
+    $("closeDayWhoField").hidden = !staffList.length;
+    $("closeDayWho").innerHTML = '<option value="">Todo el negocio</option>' +
+      staffList.map((st) => `<option value="${esc(st.id)}">Solo ${esc(st.name)}</option>`).join("");
+    updateCloseDayWarning();
+    closeDayModal.classList.add("show");
+  });
+
+  const confirmCloseDayBtn = $("confirmCloseDayBtn");
+  confirmCloseDayBtn.addEventListener("click", async () => {
+    confirmCloseDayBtn.disabled = true;
+    const result = await DataStore.closeDay(business.id, {
+      date: selectedDate,
+      dateTo: $("closeDayTo").value || null,
+      staffId: $("closeDayWho").value || null,
+      reason: $("closeDayReason").value,
+    });
+    confirmCloseDayBtn.disabled = false;
+    if (!result.ok) {
+      showToast(result.error || "No se pudo cerrar el día. Intenta de nuevo.");
+      return;
+    }
+    closeCloseDay();
+    showToast(result.days > 1 ? `Listo: ${result.days} días cerrados.` : "Día cerrado.");
+    await render({ silent: true });
+  });
+
+  // ── Horario semanal ───────────────────────────────────────────────────
+  const scheduleModal = $("scheduleModal");
+  const EVERY_OPTIONS = [15, 20, 30, 40, 45, 60, 75, 90, 120];
+  const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  let draft = null;
+  let draftSnapshot = null;
+
+  function catalogNames() {
+    return Array.from(new Set((business.servicesCatalog || []).map((s) => s.name).filter(Boolean)));
+  }
+
+  function draftState() {
+    return JSON.stringify(draft.lanes.map((l) => [l.staffId, l.services, l.rules]));
+  }
+
+  function buildDraft() {
+    const names = catalogNames();
+    const rulesOf = (staffId) => schedule.rules
+      .filter((r) => r.staffId === staffId)
+      .map((r) => ({ id: r.id, days: r.days.slice(), start: r.start, end: r.end, every: r.every }));
+    const lanes = (business.staff || []).map((st) => ({
+      staffId: st.id,
+      name: st.name,
+      services: st.services && st.services.length ? names.filter((n) => st.services.includes(n)) : names.slice(),
+      rules: rulesOf(st.id),
+    }));
+    lanes.push({ staffId: null, name: "", services: names.slice(), rules: rulesOf(null) });
+    return { lanes };
+  }
+
+  function timeOptionsHtml(selected, from, to) {
+    const values = [];
+    for (let m = from; m <= to; m += 30) values.push(m);
+    if (!values.includes(selected)) values.push(selected);
+    return values.sort((a, b) => a - b).map((m) =>
+      `<option value="${m}" ${m === selected ? "selected" : ""}>${m === 1440 ? "12:00 AM (medianoche)" : S.minutesLabel(m)}</option>`
+    ).join("");
+  }
+
+  function ruleSlotsPerWeek(rule) {
+    return S.ruleError(rule) ? 0 : Math.floor((rule.end - rule.start) / rule.every) * rule.days.length;
+  }
+
+  function renderScheduleCards() {
+    const names = catalogNames();
+    const hasStaff = draft.lanes.length > 1;
+    $("scheduleCards").innerHTML = draft.lanes.map((lane, li) => {
+      const others = draft.lanes.filter((l, i) => i !== li && l.rules.length);
+      const title = lane.staffId
+        ? "👤 " + esc(lane.name)
+        : (hasStaff ? "🏪 Sin persona asignada" : "🏪 Mi negocio");
+      const sub = !lane.staffId && hasStaff
+        ? '<span class="field-hint">Opcional: cupos que puede atender cualquiera del equipo.</span>'
+        : "";
+      const services = lane.staffId && names.length
+        ? `<span class="sched-label">Servicios que hace ${esc(lane.name)}</span>
+           <div class="sched-services">${names.map((n) =>
+             `<button type="button" class="sched-chip ${lane.services.includes(n) ? "active" : ""}" data-service="${esc(n)}" aria-pressed="${lane.services.includes(n)}">${esc(n)}</button>`
+           ).join("")}</div>`
+        : "";
+      const rules = lane.rules.map((rule, ri) => {
+        const error = S.ruleError(rule);
+        const perDay = error ? 0 : Math.floor((rule.end - rule.start) / rule.every);
+        return `<div class="sched-rule ${error ? "invalid" : ""}" data-rule="${ri}">
+          <div class="sched-days">${WEEK_ORDER.map((d) =>
+            `<button type="button" class="sched-day ${rule.days.includes(d) ? "active" : ""}" data-day="${d}" aria-pressed="${rule.days.includes(d)}" aria-label="${S.WEEKDAYS_LONG[d]}">${S.WEEKDAYS_SHORT[d]}</button>`
+          ).join("")}</div>
+          <div class="sched-times">
+            <span>De</span>
+            <select data-field="start" aria-label="Hora de entrada">${timeOptionsHtml(rule.start, 300, 1410)}</select>
+            <span>a</span>
+            <select data-field="end" aria-label="Hora de salida">${timeOptionsHtml(rule.end, 330, 1440)}</select>
+            <span>· una cita cada</span>
+            <select data-field="every" aria-label="Duración de cada cita">${EVERY_OPTIONS.map((m) => `<option value="${m}" ${m === rule.every ? "selected" : ""}>${m} min</option>`).join("")}</select>
+            <button type="button" class="btn-link-danger" data-remove-rule aria-label="Quitar turno">✕</button>
+          </div>
+          <div class="sched-rule-info">${error ? esc(error) : `${plural(perDay, "cita", "citas")} por día · ${plural(rule.days.length, "día", "días")} a la semana`}</div>
+        </div>`;
+      }).join("");
+      return `<div class="sched-card" data-lane="${li}">
+        <div class="sched-card-head">
+          <div><strong>${title}</strong>${sub}</div>
+          ${others.length ? `<select data-copy aria-label="Copiar turnos de otra persona">
+            <option value="">Copiar turnos de…</option>
+            ${draft.lanes.map((l, i) => (i !== li && l.rules.length ? `<option value="${i}">${l.staffId ? esc(l.name) : "Sin persona asignada"}</option>` : "")).join("")}
+          </select>` : ""}
+        </div>
+        ${services}
+        <span class="sched-label">Turnos</span>
+        ${rules || '<p class="field-hint sched-empty">Sin turnos: aquí no se publican cupos automáticos.</p>'}
+        <button type="button" class="btn btn-outline btn-sm" data-add-rule>+ Agregar turno</button>
+      </div>`;
+    }).join("");
+
+    const total = draft.lanes.reduce((sum, l) => sum + l.rules.reduce((n, r) => n + ruleSlotsPerWeek(r), 0), 0);
+    $("scheduleTotal").textContent = total
+      ? `En total: ${plural(total, "cupo", "cupos")} por semana.`
+      : "Todavía no hay turnos: agrega al menos uno para que tus cupos se publiquen solos.";
+
+    $("scheduleCards").querySelectorAll(".sched-card").forEach((card) => {
+      const lane = draft.lanes[parseInt(card.dataset.lane, 10)];
+      card.querySelectorAll("[data-service]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const name = chip.dataset.service;
+          if (lane.services.includes(name)) {
+            if (lane.services.length === 1) {
+              showToast("Cada persona debe hacer al menos un servicio.");
+              return;
+            }
+            lane.services = lane.services.filter((n) => n !== name);
+          } else {
+            lane.services = catalogNames().filter((n) => n === name || lane.services.includes(n));
+          }
+          renderScheduleCards();
+        });
+      });
+      const add = card.querySelector("[data-add-rule]");
+      add.addEventListener("click", () => {
+        // Un segundo turno casi siempre es "la tarde, después de comer":
+        // mismos días, una hora después de que termina el anterior.
+        const last = lane.rules[lane.rules.length - 1];
+        const start = last ? last.end + 60 : 9 * 60;
+        lane.rules.push(last && start + last.every <= 1440
+          ? { id: S.newRuleId(), days: last.days.slice(), start, end: Math.min(1440, start + 240), every: last.every }
+          : { id: S.newRuleId(), days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60, every: 60 });
+        renderScheduleCards();
+      });
+      const copy = card.querySelector("[data-copy]");
+      if (copy) {
+        copy.addEventListener("change", () => {
+          if (copy.value === "") return;
+          const source = draft.lanes[parseInt(copy.value, 10)];
+          lane.rules = source.rules.map((r) => ({ ...r, id: S.newRuleId(), days: r.days.slice() }));
+          renderScheduleCards();
+        });
+      }
+      card.querySelectorAll(".sched-rule").forEach((row) => {
+        const rule = lane.rules[parseInt(row.dataset.rule, 10)];
+        row.querySelectorAll("[data-day]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const day = parseInt(btn.dataset.day, 10);
+            rule.days = rule.days.includes(day) ? rule.days.filter((d) => d !== day) : rule.days.concat(day).sort();
+            renderScheduleCards();
+          });
+        });
+        row.querySelectorAll("select[data-field]").forEach((sel) => {
+          sel.addEventListener("change", () => {
+            rule[sel.dataset.field] = parseInt(sel.value, 10);
+            renderScheduleCards();
+          });
+        });
+        row.querySelector("[data-remove-rule]").addEventListener("click", () => {
+          lane.rules.splice(parseInt(row.dataset.rule, 10), 1);
+          renderScheduleCards();
+        });
+      });
+    });
+  }
+
+  function openSchedule() {
+    draft = buildDraft();
+    draftSnapshot = draftState();
+    const warning = $("scheduleWarning");
+    const saveBtn = $("saveScheduleBtn");
+    saveBtn.disabled = false;
+    if (business.scheduleSupported === false) {
+      warning.hidden = false;
+      warning.innerHTML = "<span>Falta un paso en Supabase para activar el horario semanal: corre <code>db/migracion-horario-semanal.sql</code> en el SQL Editor y recarga esta página.</span>";
+      saveBtn.disabled = true;
+    } else if (!catalogNames().length) {
+      warning.hidden = false;
+      warning.innerHTML = '<span>Primero necesitas al menos un servicio con precio: de ahí salen los servicios y precios de cada cupo.</span><button type="button" class="btn btn-primary btn-sm" id="scheduleGoCatalog">Agregar servicios</button>';
+      saveBtn.disabled = true;
+      $("scheduleGoCatalog").addEventListener("click", () => {
+        closeSchedule({ force: true });
+        openEditModal();
+      });
+    } else {
+      warning.hidden = true;
+    }
+    $("scheduleStaffHint").textContent = (business.staff || []).length
+      ? "¿Entró o salió alguien del equipo? Se cambia en Editar negocio → Personal."
+      : "¿Trabajan varias personas? Agrégalas en Editar negocio → Personal y cada quien tendrá aquí su propio horario y sus servicios.";
+    renderScheduleCards();
+    scheduleModal.classList.add("show");
+  }
+
+  function closeSchedule({ force } = {}) {
+    if (!force && draft && draftState() !== draftSnapshot && !window.confirm("Tienes cambios sin guardar en tu horario. ¿Descartarlos?")) return;
+    draft = null;
+    scheduleModal.classList.remove("show");
+  }
+  $("scheduleBtn").addEventListener("click", openSchedule);
+  $("scheduleNudgeBtn").addEventListener("click", openSchedule);
+  $("closeScheduleBtn").addEventListener("click", () => closeSchedule());
+  $("cancelScheduleBtn").addEventListener("click", () => closeSchedule());
+  scheduleModal.addEventListener("click", (e) => { if (e.target === scheduleModal) closeSchedule(); });
+
+  const saveScheduleBtn = $("saveScheduleBtn");
+  saveScheduleBtn.addEventListener("click", async () => {
+    const names = catalogNames();
+    const rules = [];
+    const staffServices = {};
+    let invalid = false;
+    draft.lanes.forEach((lane) => {
+      if (lane.staffId) staffServices[lane.staffId] = lane.services.length === names.length ? [] : lane.services.slice();
+      lane.rules.forEach((r) => {
+        const rule = { id: r.id, staffId: lane.staffId, days: r.days.slice(), start: r.start, end: r.end, every: r.every };
+        if (S.ruleError(rule)) invalid = true;
+        rules.push(rule);
+      });
+    });
+    if (invalid) {
+      showToast("Revisa los turnos marcados en rojo.");
+      return;
+    }
+    saveScheduleBtn.disabled = true;
+    saveScheduleBtn.textContent = "Publicando cupos...";
+    const result = await DataStore.saveSchedule(business.id, { rules, staffServices });
+    saveScheduleBtn.disabled = false;
+    saveScheduleBtn.textContent = "Guardar horario";
+    if (!result.ok) {
+      showToast(result.error || "No se pudo guardar el horario. Intenta de nuevo.");
+      return;
+    }
+    closeSchedule({ force: true });
+    showToast(rules.length
+      ? `Horario guardado. ${plural(result.created, "cupo nuevo publicado", "cupos nuevos publicados")} para las próximas 4 semanas.`
+      : "Horario guardado. Ya no se publican cupos automáticos.");
+    await render({ silent: true });
+  });
+
+  // ── Editar negocio ────────────────────────────────────────────────────
+  const editModal = $("editModal");
+  const editCategorySelect = $("editCategory");
+  DataStore.CATEGORIES.forEach((cat) => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    editCategorySelect.appendChild(opt);
+  });
+
+  function addServiceRow(name, price) {
+    const container = $("editServicesRows");
+    const row = document.createElement("div");
+    row.className = "edit-row";
+    row.innerHTML =
+      '<input type="text" class="svc-name" placeholder="Servicio" value="' + esc(name || "") + '">' +
+      '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price === 0 || price ? price : "") + '">' +
+      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar servicio">✕</button>';
+    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
+    container.appendChild(row);
+  }
+
+  function addStaffRow(name, id) {
+    const container = $("editStaffRows");
+    const row = document.createElement("div");
+    row.className = "edit-row";
+    row.dataset.staffId = id || ("ST-" + Math.random().toString(36).slice(2, 8));
+    row.innerHTML =
+      '<input type="text" class="staff-name" placeholder="Nombre" value="' + esc(name || "") + '">' +
+      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar persona">✕</button>';
+    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
+    container.appendChild(row);
+  }
+
+  $("addServiceRowBtn").addEventListener("click", () => addServiceRow("", ""));
+  $("addStaffRowBtn").addEventListener("click", () => addStaffRow("", ""));
+  $("suggestServicesBtn").addEventListener("click", () => {
+    const existing = Array.from(document.querySelectorAll("#editServicesRows .svc-name")).map((el) => el.value.trim().toLowerCase());
+    const missing = (DataStore.SERVICES_BY_CATEGORY[editCategorySelect.value] || []).filter((n) => !existing.includes(n.toLowerCase()));
+    if (!missing.length) {
+      showToast("Ya tienes todos los servicios sugeridos de esa categoría.");
+      return;
+    }
+    missing.forEach((n) => addServiceRow(n, ""));
+    showToast("Agregados. Ponle precio a cada uno y quita los que no ofrezcas.");
+  });
+
+  const editPhotoFileInput = $("editPhotoFile");
+  const editPhotoHint = $("editPhotoHint");
+  const editPhotoHintDefault = editPhotoHint.textContent;
+  editPhotoFileInput.addEventListener("change", async () => {
+    const files = Array.from(editPhotoFileInput.files || []);
+    if (!files.length) return;
+    const photosTextarea = $("editPhotos");
+    editPhotoFileInput.disabled = true;
+    for (const file of files) {
+      editPhotoHint.textContent = "Subiendo " + file.name + "...";
+      const result = await DataStore.uploadPhoto(business.id, file, "business");
+      if (!result.ok) {
+        showToast(result.error || "No se pudo subir la foto.");
+        continue;
+      }
+      const current = photosTextarea.value.trim();
+      photosTextarea.value = current ? current + "\n" + result.url : result.url;
+    }
+    editPhotoHint.textContent = editPhotoHintDefault;
+    editPhotoFileInput.disabled = false;
+    editPhotoFileInput.value = "";
+  });
+
+  // Para avisar si cierran el modal con cambios sin guardar: una foto del
+  // estado del formulario al abrirlo, comparada contra el estado actual.
+  let editModalSnapshot = null;
+  function captureEditModalState() {
+    return JSON.stringify({
+      name: $("editName").value,
+      category: $("editCategory").value,
+      address: $("editAddress").value,
+      photos: $("editPhotos").value,
+      services: Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => [
+        row.querySelector(".svc-name").value,
+        row.querySelector(".svc-price").value,
+      ]),
+      staff: Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => row.querySelector(".staff-name").value),
+    });
+  }
+  function editModalDirty() {
+    return editModalSnapshot !== null && captureEditModalState() !== editModalSnapshot;
+  }
+
+  function openEditModal() {
+    $("editName").value = business.name;
+    $("editCategory").value = business.category;
+    $("editAddress").value = business.address;
+    $("editPhotos").value = (business.photos || []).join("\n");
+    editPhotoFileInput.value = "";
+
+    $("editServicesRows").innerHTML = "";
+    (business.servicesCatalog || []).forEach((s) => addServiceRow(s.name, s.price));
+
+    $("editStaffRows").innerHTML = "";
+    (business.staff || []).forEach((s) => addStaffRow(s.name, s.id));
+
+    editModal.classList.add("show");
+    editModalSnapshot = captureEditModalState();
+  }
+  $("editProfileBtn").addEventListener("click", openEditModal);
+
+  function closeEditModal({ force } = {}) {
+    if (!force && editModalDirty() && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) {
+      return;
+    }
+    editModalSnapshot = null;
+    editModal.classList.remove("show");
+  }
+  $("cancelEditBtn").addEventListener("click", () => closeEditModal());
+  $("closeEditBtn").addEventListener("click", () => closeEditModal());
+  editModal.addEventListener("click", (e) => { if (e.target === editModal) closeEditModal(); });
+
+  const saveEditBtn = $("saveEditBtn");
+  saveEditBtn.addEventListener("click", async () => {
+    const name = $("editName").value.trim();
+    const category = $("editCategory").value;
+    const address = $("editAddress").value.trim();
+    if (!name || !address) return;
+
+    const photos = $("editPhotos").value
+      .split("\n").map((s) => s.trim()).filter(Boolean);
+
+    // Un servicio sin precio quedaría reservable en $0 en los cupos del
+    // horario semanal: mejor pedirlo aquí que descubrirlo con un cliente.
+    const serviceRows = Array.from(document.querySelectorAll("#editServicesRows .edit-row"))
+      .map((row) => ({ name: row.querySelector(".svc-name").value.trim(), raw: row.querySelector(".svc-price").value.trim() }))
+      .filter((s) => s.name);
+    const unpriced = serviceRows.find((s) => s.raw === "");
+    if (unpriced) {
+      showToast(`Ponle precio a “${unpriced.name}” (o quítalo de tu catálogo).`);
+      return;
+    }
+    const servicesCatalog = serviceRows.map((s) => ({ name: s.name, price: parseInt(s.raw, 10) || 0 }));
+
+    const staff = Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => ({
+      id: row.dataset.staffId,
+      name: row.querySelector(".staff-name").value.trim(),
+    })).filter((s) => s.name);
+
+    saveEditBtn.disabled = true;
+    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
+    if (result && result.ok === false) {
+      saveEditBtn.disabled = false;
+      showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
+      return;
+    }
+    // Quitar a alguien del equipo deja sus turnos sin dueño: el horario se
+    // vuelve a cuadrar para que no queden cupos de una persona que ya no está.
+    await DataStore.syncSchedule(business.id);
+    saveEditBtn.disabled = false;
+    closeEditModal({ force: true });
+    showToast("Perfil actualizado.");
+    await render({ silent: true });
+    setHeader();
+  });
+
+  // ── Vista previa: la tarjeta tal como la ve un cliente ────────────────
   // Si la foto de un negocio en Vista previa no carga, cae de vuelta al
   // gradiente+emoji de siempre — igual que en cliente.js.
   window.__cupoPhotoError = function (img) {
@@ -85,19 +1127,23 @@
     return { value, count: reviews.length };
   }
 
-  const previewModal = document.getElementById("previewModal");
+  const previewModal = $("previewModal");
   function closePreview() {
     previewModal.classList.remove("show");
   }
-  document.getElementById("closePreviewBtn").addEventListener("click", closePreview);
-  document.getElementById("closePreviewBtn2").addEventListener("click", closePreview);
+  $("closePreviewBtn").addEventListener("click", closePreview);
+  $("closePreviewBtn2").addEventListener("click", closePreview);
   previewModal.addEventListener("click", (e) => { if (e.target === previewModal) closePreview(); });
 
   function renderPreviewCard() {
     const b = business;
-    const todayStart = DataStore.startOfDay(Date.now());
-    const todayEnd = todayStart + 86400000;
-    const slotsForDay = b.slots.filter((s) => s.time >= todayStart && s.time < todayEnd);
+    const now = Date.now();
+    const [todayStart, todayEnd] = dayRange(todayKey());
+    // Igual que el panel del cliente: nada que ya empezó, ni cupos libres
+    // sin servicio que ofrecer.
+    const slotsForDay = b.slots
+      .filter((s) => s.time >= todayStart && s.time < todayEnd && s.time > now)
+      .filter((s) => s.status !== "available" || S.describeSlot(b, s).bookable);
     const availableCount = slotsForDay.filter((s) => s.status === "available").length;
     const urgencyHtml = availableCount > 0 && availableCount <= 2
       ? `<span class="urgency-badge">¡Solo queda${availableCount === 1 ? "" : "n"} ${availableCount}!</span>`
@@ -105,15 +1151,16 @@
     const slotsHtml = slotsForDay.length
       ? slotsForDay.map((s) => {
           const cls = s.status === "available" ? "available" : "booked";
-          const priceHtml = s.originalPrice
-            ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
-            : `<span class="price">$${s.price}${s.status === "booked" ? " · ocupado" : ""}</span>`;
+          const d = S.describeSlot(b, s);
+          const price = s.status === "booked"
+            ? `<span class="price">$${s.price} · ocupado</span>`
+            : `<span class="price">${priceHtml(d)}${s.discountPct > 0 ? ` <span class="discount-badge">-${s.discountPct}%</span>` : ""}</span>`;
           return `<div class="slot ${cls}">
             <span class="time">${s.label}</span>
-            ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
+            ${d.service ? `<span class="price">${esc(d.service)}</span>` : ""}
             <span class="price">${s.duration} min</span>
             ${s.staffName ? `<span class="price">con ${esc(s.staffName)}</span>` : ""}
-            ${priceHtml}
+            ${price}
           </div>`;
         }).join("")
       : '<span style="color:var(--gray);font-size:13.5px">Sin horarios publicados para hoy</span>';
@@ -138,7 +1185,7 @@
         ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
       </details>`;
 
-    document.getElementById("previewCardContainer").innerHTML = `<div class="biz-card">
+    $("previewCardContainer").innerHTML = `<div class="biz-card">
       ${photoHtml}
       <div class="biz-head">
         <div>
@@ -159,7 +1206,7 @@
     </div>`;
   }
 
-  document.getElementById("previewBtn").addEventListener("click", async () => {
+  $("previewBtn").addEventListener("click", async () => {
     try {
       business = await getBusiness();
     } catch (err) {
@@ -169,305 +1216,61 @@
     previewModal.classList.add("show");
   });
 
-  function addServiceRow(name, price) {
-    const container = document.getElementById("editServicesRows");
-    const row = document.createElement("div");
-    row.className = "edit-row";
-    row.innerHTML =
-      '<input type="text" class="svc-name" placeholder="Servicio" value="' + esc(name || "") + '">' +
-      '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price || "") + '">' +
-      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar servicio">✕</button>';
-    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
-    container.appendChild(row);
+  // ── Render general ────────────────────────────────────────────────────
+  function renderStats() {
+    const now = Date.now();
+    const [todayStart, todayEnd] = dayRange(todayKey());
+    const weekEnd = todayStart + 7 * DAY_MS;
+    const today = business.slots.filter((s) => s.time >= todayStart && s.time < todayEnd);
+    $("statToday").textContent = today.filter((s) => s.status === "booked").length;
+    $("statFreeToday").textContent = today.filter((s) => s.status === "available" && slotEnd(s) > now).length;
+    $("statWeek").textContent = business.slots.filter((s) => s.status === "booked" && s.time >= todayStart && s.time < weekEnd).length;
   }
 
-  function addStaffRow(name, id) {
-    const container = document.getElementById("editStaffRows");
-    const row = document.createElement("div");
-    row.className = "edit-row";
-    row.dataset.staffId = id || ("ST-" + Math.random().toString(36).slice(2, 8));
-    row.innerHTML =
-      '<input type="text" class="staff-name" placeholder="Nombre" value="' + esc(name || "") + '">' +
-      '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar persona">✕</button>';
-    row.querySelector(".remove-row").addEventListener("click", () => row.remove());
-    container.appendChild(row);
-  }
-
-  document.getElementById("addServiceRowBtn").addEventListener("click", () => addServiceRow("", ""));
-  document.getElementById("addStaffRowBtn").addEventListener("click", () => addStaffRow("", ""));
-
-  const editPhotoFileInput = document.getElementById("editPhotoFile");
-  const editPhotoHint = document.getElementById("editPhotoHint");
-  const editPhotoHintDefault = editPhotoHint.textContent;
-  editPhotoFileInput.addEventListener("change", async () => {
-    const files = Array.from(editPhotoFileInput.files || []);
-    if (!files.length) return;
-    const photosTextarea = document.getElementById("editPhotos");
-    editPhotoFileInput.disabled = true;
-    for (const file of files) {
-      editPhotoHint.textContent = "Subiendo " + file.name + "...";
-      const result = await DataStore.uploadPhoto(business.id, file, "business");
-      if (!result.ok) {
-        showToast(result.error || "No se pudo subir la foto.");
-        continue;
-      }
-      const current = photosTextarea.value.trim();
-      photosTextarea.value = current ? current + "\n" + result.url : result.url;
-    }
-    editPhotoHint.textContent = editPhotoHintDefault;
-    editPhotoFileInput.disabled = false;
-    editPhotoFileInput.value = "";
-  });
-
-  // Para avisar si cierran el modal con cambios sin guardar: una foto del
-  // estado del formulario al abrirlo, comparada contra el estado actual.
-  let editModalSnapshot = null;
-  function captureEditModalState() {
-    return JSON.stringify({
-      name: document.getElementById("editName").value,
-      category: document.getElementById("editCategory").value,
-      address: document.getElementById("editAddress").value,
-      photos: document.getElementById("editPhotos").value,
-      services: Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => [
-        row.querySelector(".svc-name").value,
-        row.querySelector(".svc-price").value,
-      ]),
-      staff: Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => row.querySelector(".staff-name").value),
-    });
-  }
-  function editModalDirty() {
-    return editModalSnapshot !== null && captureEditModalState() !== editModalSnapshot;
-  }
-
-  document.getElementById("editProfileBtn").addEventListener("click", () => {
-    document.getElementById("editName").value = business.name;
-    document.getElementById("editCategory").value = business.category;
-    document.getElementById("editAddress").value = business.address;
-    document.getElementById("editPhotos").value = (business.photos || []).join("\n");
-    editPhotoFileInput.value = "";
-
-    document.getElementById("editServicesRows").innerHTML = "";
-    (business.servicesCatalog || []).forEach((s) => addServiceRow(s.name, s.price));
-
-    document.getElementById("editStaffRows").innerHTML = "";
-    (business.staff || []).forEach((s) => addStaffRow(s.name, s.id));
-
-    editModal.classList.add("show");
-    editModalSnapshot = captureEditModalState();
-  });
-
-  function closeEditModal({ force } = {}) {
-    if (!force && editModalDirty() && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) {
-      return;
-    }
-    editModalSnapshot = null;
-    editModal.classList.remove("show");
-  }
-  document.getElementById("cancelEditBtn").addEventListener("click", () => closeEditModal());
-  document.getElementById("closeEditBtn").addEventListener("click", () => closeEditModal());
-  editModal.addEventListener("click", (e) => { if (e.target === editModal) closeEditModal(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeEditModal(); });
-
-  const saveEditBtn = document.getElementById("saveEditBtn");
-  saveEditBtn.addEventListener("click", async () => {
-    const name = document.getElementById("editName").value.trim();
-    const category = document.getElementById("editCategory").value;
-    const address = document.getElementById("editAddress").value.trim();
-    if (!name || !address) return;
-
-    const photos = document.getElementById("editPhotos").value
-      .split("\n").map((s) => s.trim()).filter(Boolean);
-
-    const servicesCatalog = Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => ({
-      name: row.querySelector(".svc-name").value.trim(),
-      price: parseInt(row.querySelector(".svc-price").value, 10) || 0,
-    })).filter((s) => s.name);
-
-    const staff = Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => ({
-      id: row.dataset.staffId,
-      name: row.querySelector(".staff-name").value.trim(),
-    })).filter((s) => s.name);
-
-    saveEditBtn.disabled = true;
-    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
-    saveEditBtn.disabled = false;
-    if (result && result.ok === false) {
-      showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
-      return;
-    }
-    closeEditModal({ force: true });
-    showToast("Perfil actualizado.");
-    await render({ silent: true });
-    renderServiceOptions();
-    document.getElementById("userName").textContent = business.name;
-    document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
-    document.getElementById("bizTitle").textContent = business.name;
-  });
-
-  function populateHourOptions(select) {
-    select.innerHTML = "";
-    for (let h = 8; h <= 21; h++) {
-      const displayH = h % 12 === 0 ? 12 : h % 12;
-      const ampm = h >= 12 ? "PM" : "AM";
-      const opt = document.createElement("option");
-      opt.value = h;
-      opt.textContent = displayH + ":00 " + ampm;
-      select.appendChild(opt);
-    }
-  }
-
-  function populateDayOptions(select) {
-    select.innerHTML = "";
-    for (let i = 0; i <= 6; i++) {
-      const opt = document.createElement("option");
-      opt.value = i;
-      if (i === 0) opt.textContent = "Hoy";
-      else if (i === 1) opt.textContent = "Mañana";
-      else {
-        const wd = new Date(Date.now() + i * 86400000).toLocaleDateString("es-MX", { weekday: "short" });
-        opt.textContent = wd.charAt(0).toUpperCase() + wd.slice(1);
-      }
-      select.appendChild(opt);
-    }
-  }
-
-  function populateServiceOptions(select) {
-    const current = select.value;
-    select.innerHTML = "";
-    (DataStore.SERVICES_BY_CATEGORY[business.category] || []).forEach((svc) => {
-      const opt = document.createElement("option");
-      opt.value = svc;
-      opt.textContent = svc;
-      select.appendChild(opt);
-    });
-    if ([...select.options].some((o) => o.value === current)) select.value = current;
-  }
-
-  function populateStaffOptions(select) {
-    const current = select.value;
-    select.innerHTML = '<option value="">Sin preferencia</option>';
-    (business.staff || []).forEach((st) => {
-      const opt = document.createElement("option");
-      opt.value = st.id;
-      opt.textContent = st.name;
-      select.appendChild(opt);
-    });
-    if ([...select.options].some((o) => o.value === current)) select.value = current;
-  }
-
-  const hourSelect = document.getElementById("newHour");
-  const serviceSelect = document.getElementById("newService");
-  const dayOffsetSelect = document.getElementById("newDayOffset");
-  populateHourOptions(hourSelect);
-  populateDayOptions(dayOffsetSelect);
-  function renderServiceOptions() { populateServiceOptions(serviceSelect); }
-  function renderStaffOptions() { populateStaffOptions(document.getElementById("newStaff")); }
-  renderServiceOptions();
-
-  const editSlotHour = document.getElementById("editSlotHour");
-  const editSlotDayOffset = document.getElementById("editSlotDayOffset");
-  const editSlotService = document.getElementById("editSlotService");
-  const editSlotStaff = document.getElementById("editSlotStaff");
-  populateHourOptions(editSlotHour);
-  populateDayOptions(editSlotDayOffset);
-
-  function showToast(msg) {
-    const toast = document.getElementById("toast");
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 2200);
-  }
-
-  const slotDetailModal = document.getElementById("slotDetailModal");
-  const slotDetailEditable = document.getElementById("slotDetailEditable");
-  const slotDetailBookedInfo = document.getElementById("slotDetailBookedInfo");
-  const slotDetailActionsAvailable = document.getElementById("slotDetailActionsAvailable");
-  const slotDetailActionsBooked = document.getElementById("slotDetailActionsBooked");
-  let detailSlotId = null;
-
-  function closeSlotDetail() {
-    slotDetailModal.classList.remove("show");
-    detailSlotId = null;
-  }
-  document.getElementById("closeSlotDetailBtn").addEventListener("click", closeSlotDetail);
-  document.getElementById("cancelSlotDetailBtn").addEventListener("click", closeSlotDetail);
-  slotDetailModal.addEventListener("click", (e) => { if (e.target === slotDetailModal) closeSlotDetail(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSlotDetail(); });
-
-  function openSlotDetail(slotId) {
-    const slot = business.slots.find((s) => s.id === slotId);
-    if (!slot) return;
-    detailSlotId = slotId;
-
-    if (slot.status === "available") {
-      slotDetailEditable.hidden = false;
-      slotDetailBookedInfo.hidden = true;
-      slotDetailActionsAvailable.hidden = false;
-      slotDetailActionsBooked.hidden = true;
-
-      populateServiceOptions(editSlotService);
-      populateStaffOptions(editSlotStaff);
-      const dayIdx = Math.round((DataStore.startOfDay(slot.time) - DataStore.startOfDay(Date.now())) / 86400000);
-      editSlotDayOffset.value = String(Math.max(0, dayIdx));
-      editSlotHour.value = String(new Date(slot.time).getHours());
-      document.getElementById("editSlotDuration").value = slot.duration;
-      document.getElementById("editSlotPrice").value = slot.originalPrice || slot.price;
-      document.getElementById("editSlotDiscount").value = slot.discountPct || 0;
-      if (slot.service) editSlotService.value = slot.service;
-      editSlotStaff.value = slot.staffId || "";
+  function renderBookings() {
+    const todayStart = S.startOfDay(Date.now());
+    const upcoming = business.slots
+      .filter((s) => s.status === "booked" && s.time >= todayStart)
+      .sort((a, b) => a.time - b.time);
+    const bookingsList = $("bookingsList");
+    if (!upcoming.length) {
+      bookingsList.innerHTML = '<div class="empty-state">Ningún cliente ha reservado todavía.</div>';
     } else {
-      slotDetailEditable.hidden = true;
-      slotDetailBookedInfo.hidden = false;
-      slotDetailActionsAvailable.hidden = true;
-      slotDetailActionsBooked.hidden = false;
-      slotDetailBookedInfo.textContent =
-        `Reservado por ${slot.clientName || "un cliente"} · ${slot.service ? slot.service + " · " : ""}${slot.label}` +
-        `${slot.staffName ? " · con " + slot.staffName : ""} · $${slot.price}. ` +
-        `Para liberar este cupo, reábrelo por cancelación.`;
+      const shown = upcoming.slice(0, 40);
+      bookingsList.innerHTML = '<div class="biz-card">' + shown.map((s) =>
+        `<div class="reservation-row clickable" data-slot="${s.id}" title="Clic para ver la cita">
+          <span>${shortDate(s.time)} · ${s.label} · ${esc(s.clientName || "Reservado")}${s.service ? " · " + esc(s.service) : ""}${s.staffName ? " · con " + esc(s.staffName) : ""}</span>
+          <strong>$${s.price}</strong>
+        </div>`
+      ).join("") + (upcoming.length > shown.length ? `<p class="field-hint" style="margin-top:10px">y ${upcoming.length - shown.length} más — búscalas en el calendario.</p>` : "") + '</div>';
+      bookingsList.querySelectorAll("[data-slot]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const slot = business.slots.find((s) => s.id === row.dataset.slot);
+          if (!slot) return;
+          selectDay(S.dateKey(slot.time));
+          openSlotDetail(slot.id);
+        });
+      });
     }
 
-    slotDetailModal.classList.add("show");
+    // Citas ya atendidas (cupos reservados con fecha anterior a hoy). Es
+    // solo un recordatorio visual — el detalle de ventas/cancelaciones
+    // vive en el dashboard de Ventas, que lee de la tabla sales.
+    const pastBooked = business.slots
+      .filter((s) => s.time < todayStart && s.status === "booked")
+      .sort((a, b) => b.time - a.time);
+    const pastAppointmentsList = $("pastAppointmentsList");
+    if (!pastBooked.length) {
+      pastAppointmentsList.innerHTML = '<div class="empty-state">Todavía no tienes citas pasadas.</div>';
+    } else {
+      pastAppointmentsList.innerHTML = '<div class="biz-card">' + pastBooked.slice(0, 60).map((s) =>
+        `<div class="reservation-row">
+          <span>${shortDate(s.time)} · ${esc(s.clientName || "Reservado")} · ${s.service ? esc(s.service) + " · " : ""}${s.label}${s.staffName ? " · " + esc(s.staffName) : ""}</span>
+          <strong>$${s.price}</strong>
+        </div>`
+      ).join("") + '</div>';
+    }
   }
-
-  document.getElementById("deleteSlotBtn").addEventListener("click", async () => {
-    if (!detailSlotId) return;
-    await DataStore.removeSlot(business.id, detailSlotId);
-    closeSlotDetail();
-    showToast("Cupo eliminado.");
-    await render({ silent: true });
-  });
-
-  const saveSlotBtn = document.getElementById("saveSlotBtn");
-  saveSlotBtn.addEventListener("click", async () => {
-    if (!detailSlotId) return;
-    saveSlotBtn.disabled = true;
-    const result = await DataStore.updateSlot(business.id, detailSlotId, {
-      hour: editSlotHour.value,
-      minute: 0,
-      duration: document.getElementById("editSlotDuration").value,
-      price: document.getElementById("editSlotPrice").value,
-      service: editSlotService.value,
-      dayOffset: editSlotDayOffset.value,
-      discountPct: document.getElementById("editSlotDiscount").value,
-      staffId: editSlotStaff.value,
-    });
-    saveSlotBtn.disabled = false;
-    if (result && result.ok === false) {
-      showToast(result.error || "No se pudo guardar. Intenta de nuevo.");
-      return;
-    }
-    closeSlotDetail();
-    showToast("Cupo actualizado.");
-    await render({ silent: true });
-  });
-
-  document.getElementById("reopenSlotBtn").addEventListener("click", async () => {
-    if (!detailSlotId) return;
-    await DataStore.reopenSlot(business.id, detailSlotId);
-    closeSlotDetail();
-    showToast("Cupo reabierto por cancelación.");
-    await render({ silent: true });
-  });
 
   async function render({ silent } = {}) {
     try {
@@ -480,104 +1283,50 @@
       if (!silent) showToast("No se pudo actualizar. Revisa tu conexión.");
       return;
     }
-    renderStaffOptions();
-    const todayStart = DataStore.startOfDay(Date.now());
-    // Solo de hoy en adelante, y en orden cronológico (hoy primero, luego
-    // mañana, etc.) — lo ya pasado vive en el dashboard de Ventas, no aquí.
-    const slots = business.slots
-      .filter((s) => s.time >= todayStart)
-      .sort((a, b) => a.time - b.time);
+    if (!business) return;
+    buildDayIndex();
+    $("scheduleNudge").hidden = S.activeRules(business).length > 0;
+    renderStats();
+    renderCalendar();
+    renderDay();
+    renderBookings();
+  }
 
-    const available = slots.filter((s) => s.status === "available");
-    const booked = slots.filter((s) => s.status === "booked");
-
-    document.getElementById("statAvailable").textContent = available.length;
-    document.getElementById("statBooked").textContent = booked.length;
-    document.getElementById("statIncome").textContent =
-      "$" + available.reduce((sum, s) => sum + s.price, 0);
-
-    const slotList = document.getElementById("slotList");
-    if (!slots.length) {
-      slotList.innerHTML = '<span style="color:var(--gray);font-size:13.5px">Aún no has publicado horarios. Agrega uno abajo.</span>';
-    } else {
-      slotList.innerHTML = slots.map((s) => {
-        const cls = s.status === "available" ? "available" : "mine";
-        const sub = s.status === "available" ? "Disponible" : (s.clientName || "Reservado");
-        const sameDay = DataStore.startOfDay(s.time) === todayStart;
-        const dateStr = sameDay ? "" : new Date(s.time).toLocaleDateString("es-MX", { weekday: "short", day: "numeric" }) + " ";
-        const priceHtml = s.discountPct > 0
-          ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
-          : `<span class="price">$${s.price}</span>`;
-        return `<div class="slot ${cls}" data-slot="${s.id}" title="Clic para ver detalles">
-          <span class="time">${dateStr}${s.label}</span>
-          ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
-          ${priceHtml}
-          ${s.staffName ? `<span class="price">${esc(s.staffName)}</span>` : ""}
-          <span class="price">${esc(sub)}</span>
-        </div>`;
-      }).join("");
-    }
-
-    slotList.querySelectorAll(".slot").forEach((el) => {
-      el.addEventListener("click", () => openSlotDetail(el.dataset.slot));
-    });
-
-    const bookingsList = document.getElementById("bookingsList");
-    if (!booked.length) {
-      bookingsList.innerHTML = '<div class="empty-state">Ningún cliente ha reservado todavía.</div>';
-    } else {
-      bookingsList.innerHTML = '<div class="biz-card">' + booked.map((s) =>
-        `<div class="reservation-row">
-          <span>${esc(s.clientName)} · ${s.service ? esc(s.service) + " · " : ""}${s.label}${s.staffName ? " · " + esc(s.staffName) : ""}</span>
-          <strong>$${s.price}</strong>
-        </div>`
-      ).join("") + '</div>';
-    }
-
-    // Citas ya atendidas (cupos reservados con fecha anterior a hoy). Es
-    // solo un recordatorio visual — el detalle de ventas/cancelaciones
-    // vive en el dashboard de Ventas, que lee de la tabla sales.
-    const pastBooked = business.slots
-      .filter((s) => s.time < todayStart && s.status === "booked")
-      .sort((a, b) => b.time - a.time);
-    const pastAppointmentsList = document.getElementById("pastAppointmentsList");
-    if (!pastBooked.length) {
-      pastAppointmentsList.innerHTML = '<div class="empty-state">Todavía no tienes citas pasadas.</div>';
-    } else {
-      pastAppointmentsList.innerHTML = '<div class="biz-card">' + pastBooked.map((s) => {
-        const dateStr = new Date(s.time).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
-        return `<div class="reservation-row">
-          <span>${dateStr} · ${esc(s.clientName)} · ${s.service ? esc(s.service) + " · " : ""}${s.label}${s.staffName ? " · " + esc(s.staffName) : ""}</span>
-          <strong>$${s.price}</strong>
-        </div>`;
-      }).join("") + '</div>';
+  // El horario semanal solo lo puede "publicar" el propio negocio, así que
+  // se pone al corriente cada vez que abre su panel (y si se queda abierto
+  // de un día para otro, al cambiar la fecha).
+  let lastSyncDay = null;
+  async function syncIfNeeded() {
+    if (lastSyncDay === todayKey()) return;
+    lastSyncDay = todayKey();
+    try {
+      const result = await DataStore.syncSchedule(business.id);
+      if (result && (result.created || result.removed)) await render({ silent: true });
+    } catch (err) {
+      console.error("syncSchedule failed:", err);
     }
   }
 
-  const addSlotBtn = document.getElementById("addSlotBtn");
-  addSlotBtn.addEventListener("click", async () => {
-    const hour = hourSelect.value;
-    const duration = document.getElementById("newDuration").value;
-    const price = document.getElementById("newPrice").value;
-    const service = serviceSelect.value;
-    const dayOffset = dayOffsetSelect.value;
-    const discountPct = document.getElementById("newDiscount").value;
-    const staffId = document.getElementById("newStaff").value;
-    addSlotBtn.disabled = true;
-    await DataStore.addSlot(business.id, { hour, minute: 0, duration, price, service, dayOffset, discountPct, staffId });
-    addSlotBtn.disabled = false;
-    showToast("Cupo publicado.");
-    await render({ silent: true });
-  });
-
   await render();
+  await syncIfNeeded();
+
+  const modals = [slotDetailModal, editModal, scheduleModal, closeDayModal, previewModal];
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    closeSlotDetail();
+    closeCloseDay();
+    closePreview();
+    if (editModal.classList.contains("show")) closeEditModal();
+    if (scheduleModal.classList.contains("show")) closeSchedule();
+  });
 
   // Igual que en el panel del cliente: si reservan un cupo desde otro
   // dispositivo mientras el negocio tiene la agenda abierta, que se entere
-  // sin recargar. Se salta el ciclo si hay un modal de edición abierto.
+  // sin recargar. Se salta el ciclo si hay un modal abierto.
   setInterval(async () => {
     if (document.hidden) return;
-    if (slotDetailModal.classList.contains("show") || editModal.classList.contains("show")) return;
+    if (modals.some((m) => m.classList.contains("show"))) return;
     await render({ silent: true });
+    await syncIfNeeded();
   }, 20000);
 })();

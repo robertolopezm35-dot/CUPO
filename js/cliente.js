@@ -65,6 +65,8 @@
   const confirmTitle = document.getElementById("confirmTitle");
   const confirmText = document.getElementById("confirmText");
   const confirmPolicy = document.getElementById("confirmPolicy");
+  const confirmServiceField = document.getElementById("confirmServiceField");
+  const confirmService = document.getElementById("confirmService");
   const folioModal = document.getElementById("folioModal");
   const folioText = document.getElementById("folioText");
   const reviewModal = document.getElementById("reviewModal");
@@ -210,10 +212,16 @@
     return { value, count: reviews.length };
   }
 
-  function openConfirm(title, text, action, showPolicy) {
+  // serviceOptions: solo para cupos flexibles con más de un servicio — el
+  // cliente elige cuál quiere antes de confirmar (cada uno con su precio).
+  function openConfirm(title, text, action, showPolicy, serviceOptions) {
     confirmTitle.textContent = title;
     confirmText.textContent = text;
     confirmPolicy.hidden = !showPolicy;
+    confirmServiceField.hidden = !serviceOptions;
+    confirmService.innerHTML = (serviceOptions || []).map((o) =>
+      `<option value="${esc(o.name)}">${esc(o.name)} — $${o.price}${o.originalPrice ? " (antes $" + o.originalPrice + ")" : ""}</option>`
+    ).join("");
     pendingAction = action;
     confirmModal.classList.add("show");
   }
@@ -306,7 +314,9 @@
       await renderFavoritesBanner();
 
       const list = businessListEl;
-      let businesses = (await DataStore.getBusinesses()).filter((b) => area.categories.includes(b.category));
+      const todayStart = DataStore.startOfDay(Date.now());
+      let businesses = (await DataStore.getBusinesses({ slotsFrom: todayStart, slotsTo: todayStart + 8 * DAY_MS }))
+        .filter((b) => area.categories.includes(b.category));
       if (activeCategory !== "Todas") {
         businesses = businesses.filter((b) => b.category === activeCategory);
       }
@@ -320,9 +330,17 @@
 
     const dayStart = DataStore.startOfDay(Date.now() + dayOffset * DAY_MS);
     const dayEnd = dayStart + DAY_MS;
+    const now = Date.now();
+    const dayKey = CupoSchedule.dateKey(dayStart);
     businesses = businesses.map((b) => {
-      let slots = b.slots.filter((s) => s.time >= dayStart && s.time < dayEnd);
-      if (serviceFilter) slots = slots.filter((s) => s.service === serviceFilter);
+      const schedule = CupoSchedule.normalize(b.schedule);
+      // Nada que ya empezó (no se puede reservar el pasado), ni cupos libres
+      // de un día que el negocio cerró o sin ningún servicio que ofrecer.
+      let slots = b.slots
+        .filter((s) => s.time >= dayStart && s.time < dayEnd && s.time > now)
+        .map((s) => ({ ...s, info: CupoSchedule.describeSlot(b, s) }))
+        .filter((s) => s.status !== "available" || (s.info.bookable && !CupoSchedule.isClosed(schedule, dayKey, s.staffId)));
+      if (serviceFilter) slots = slots.filter((s) => s.info.options.some((o) => o.name === serviceFilter));
       slots = slots.filter((s) => s.status !== "available" || slotMatchesHorario(s));
       return { ...b, visibleSlots: slots };
     });
@@ -355,12 +373,13 @@
       const slotsHtml = slotsForDay.length
         ? slotsForDay.map((s) => {
             const cls = s.status === "available" ? "available" : "booked";
-            const priceHtml = s.originalPrice
-              ? `<span class="price"><s>$${s.originalPrice}</s> $${s.price} <span class="discount-badge">-${s.discountPct}%</span></span>`
-              : `<span class="price">$${s.price}${s.status === "booked" ? " · ocupado" : ""}</span>`;
+            const amount = (s.info.from ? "desde " : "") + "$" + s.info.price;
+            const priceHtml = s.info.originalPrice
+              ? `<span class="price"><s>$${s.info.originalPrice}</s> ${amount} <span class="discount-badge">-${s.discountPct}%</span></span>`
+              : `<span class="price">${amount}${s.status === "booked" ? " · ocupado" : ""}</span>`;
             return `<div class="slot ${cls}" data-business="${b.id}" data-slot="${s.id}">
               <span class="time">${s.label}</span>
-              ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
+              ${s.info.service ? `<span class="price">${esc(s.info.service)}</span>` : ""}
               <span class="price">${s.duration} min</span>
               ${s.staffName ? `<span class="price">con ${esc(s.staffName)}</span>` : ""}
               ${priceHtml}
@@ -425,12 +444,26 @@
         const businessId = el.dataset.business;
         const slotId = el.dataset.slot;
         const business = await DataStore.getBusinessById(businessId);
-        const slot = business.slots.find((s) => s.id === slotId);
+        const slot = business && business.slots.find((s) => s.id === slotId);
+        const options = slot && slot.status === "available" ? CupoSchedule.slotOptions(business, slot) : [];
+        if (!options.length) {
+          showToast("Ese cupo ya no está disponible.");
+          await renderBusinesses({ silent: true });
+          return;
+        }
+        // Con varios servicios el cliente elige en el modal; con uno solo
+        // (cupo normal, o flexible con un único servicio) va directo.
+        const choose = options.length > 1;
+        const only = options[0];
+        const where = `${business.name} · ${slot.label} (${slot.duration} min)${slot.staffName ? " · con " + slot.staffName : ""}`;
         openConfirm(
           "Confirmar reserva",
-          `${business.name} · ${slot.service ? slot.service + " · " : ""}${slot.label} (${slot.duration} min) · $${slot.price}${slot.staffName ? " · con " + slot.staffName : ""}. ¿Confirmas tu reserva?`,
+          choose
+            ? `${where}. Elige tu servicio y confirma tu reserva.`
+            : `${where} · ${only.name ? only.name + " · " : ""}$${only.price}. ¿Confirmas tu reserva?`,
           async () => {
-            const result = await DataStore.bookSlot(businessId, slotId, client);
+            const chosen = choose ? options.find((o) => o.name === confirmService.value) || only : only;
+            const result = await DataStore.bookSlot(businessId, slotId, client, slot.flexible ? { service: chosen.name } : {});
             if (!result.ok) {
               showToast(result.error);
               // Alguien más pudo haberse quedado con el cupo justo antes —
@@ -438,13 +471,14 @@
               // no vuelva a intentar reservar algo que ya no existe.
               await renderBusinesses({ silent: true });
             } else {
-              folioText.innerHTML = `<strong>Folio: ${esc(result.folio)}</strong><br>${esc(business.name)} · ${slot.label}${slot.service ? " · " + esc(slot.service) : ""}.<br>Muestra este folio al llegar. Pagas en el negocio.`;
+              folioText.innerHTML = `<strong>Folio: ${esc(result.folio)}</strong><br>${esc(business.name)} · ${slot.label}${chosen.name ? " · " + esc(chosen.name) : ""}.<br>Muestra este folio al llegar. Pagas en el negocio.`;
               folioModal.classList.add("show");
               await renderBusinesses({ silent: true });
               await renderReservations();
             }
           },
-          true
+          true,
+          choose ? options : null
         );
       });
     });

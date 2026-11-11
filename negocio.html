@@ -23,66 +23,101 @@
     <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <a href="ventas.html" class="btn btn-primary btn-sm">📊 Ver ventas</a>
+      <button class="btn btn-outline btn-sm" id="scheduleBtn">🗓️ Horario semanal</button>
       <button class="btn btn-outline btn-sm" id="previewBtn">👁️ Vista previa</button>
       <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
     </div>
   </div>
-  <p class="dash-sub">Publica un cupo cuando se libere un espacio y vuelve a llenar tu agenda. Clic en un cupo para ver sus detalles.</p>
+  <p class="dash-sub">Programa tu semana una sola vez en “Horario semanal” y CUPO publica tus cupos solo. Toca un día del calendario para ver sus citas, agendar, cancelar o cerrarlo.</p>
+
+  <div id="scheduleNudge" class="favorites-banner" hidden>
+    <span>💡 ¿Publicas cupo por cupo? Programa tu horario una vez y se repite solo todas las semanas.</span>
+    <button type="button" class="btn btn-primary btn-sm" id="scheduleNudgeBtn">Programar horario</button>
+  </div>
 
   <div class="stat-row">
     <div class="stat-card">
-      <div class="num" id="statAvailable">0</div>
-      <div class="lbl">Cupos disponibles</div>
+      <div class="num" id="statToday">0</div>
+      <div class="lbl">Citas hoy</div>
     </div>
     <div class="stat-card">
-      <div class="num" id="statBooked">0</div>
-      <div class="lbl">Cupos reservados</div>
+      <div class="num" id="statFreeToday">0</div>
+      <div class="lbl">Cupos libres hoy</div>
     </div>
     <div class="stat-card">
-      <div class="num" id="statIncome">$0</div>
-      <div class="lbl">Ingreso potencial de hoy</div>
+      <div class="num" id="statWeek">0</div>
+      <div class="lbl">Citas en los próximos 7 días</div>
     </div>
   </div>
 
-  <div class="biz-card">
-    <p class="biz-name" style="margin-bottom:14px">Mis horarios (próximos 7 días)</p>
-    <div class="slot-list" id="slotList"></div>
+  <div class="agenda-grid">
+    <div class="biz-card cal-card">
+      <div class="cal-head">
+        <button type="button" class="cal-nav" id="calPrev" aria-label="Mes anterior">‹</button>
+        <h2 class="cal-title" id="calTitle"></h2>
+        <button type="button" class="cal-nav" id="calNext" aria-label="Mes siguiente">›</button>
+        <button type="button" class="btn btn-outline btn-sm" id="calTodayBtn">Hoy</button>
+      </div>
+      <div class="cal-weekdays" aria-hidden="true">
+        <span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span><i class="dot today"></i>Hoy</span>
+        <span><i class="dot booked"></i>Con citas</span>
+        <span><i class="dot free"></i>Cupos libres</span>
+        <span><i class="dot closed"></i>Cerrado</span>
+        <span><i class="dot off"></i>No se trabaja</span>
+      </div>
+    </div>
 
-    <div class="add-slot-row">
-      <div class="field">
-        <label>Día</label>
-        <select id="newDayOffset"></select>
+    <div class="biz-card day-card" id="dayPanel">
+      <div class="day-head">
+        <div>
+          <p class="biz-name" id="dayTitle"></p>
+          <div class="biz-meta" id="daySummary"></div>
+        </div>
+        <span id="dayBadge"></span>
       </div>
-      <div class="field">
-        <label>Servicio</label>
-        <select id="newService"></select>
+      <div id="dayNotices"></div>
+      <div id="daySlots"></div>
+      <div class="day-actions" id="dayActions">
+        <button type="button" class="btn btn-primary btn-sm" id="dayAddBtn">+ Agregar cupo</button>
+        <button type="button" class="btn btn-outline btn-sm" id="dayCloseBtn">Cerrar este día</button>
       </div>
-      <div class="field">
-        <label>Hora</label>
-        <select id="newHour"></select>
+
+      <div class="add-slot-row" id="addSlotForm" hidden>
+        <div class="field">
+          <label>Servicio</label>
+          <select id="newService"></select>
+        </div>
+        <div class="field">
+          <label>Hora</label>
+          <select id="newHour"></select>
+        </div>
+        <div class="field">
+          <label>Duración (min)</label>
+          <input type="number" id="newDuration" value="45" min="15" step="15">
+        </div>
+        <div class="field">
+          <label>Precio</label>
+          <input type="number" id="newPrice" value="200" min="0" step="10">
+        </div>
+        <div class="field">
+          <label>Descuento %</label>
+          <input type="number" id="newDiscount" value="0" min="0" max="90" step="5">
+        </div>
+        <div class="field">
+          <label>Estilista</label>
+          <select id="newStaff"><option value="">Sin preferencia</option></select>
+        </div>
+        <button class="btn btn-primary" id="addSlotBtn">Publicar cupo</button>
       </div>
-      <div class="field">
-        <label>Duración (min)</label>
-        <input type="number" id="newDuration" value="45" min="15" step="15">
-      </div>
-      <div class="field">
-        <label>Precio</label>
-        <input type="number" id="newPrice" value="200" min="0" step="10">
-      </div>
-      <div class="field">
-        <label>Descuento %</label>
-        <input type="number" id="newDiscount" value="0" min="0" max="90" step="5">
-      </div>
-      <div class="field">
-        <label>Estilista</label>
-        <select id="newStaff"><option value="">Sin preferencia</option></select>
-      </div>
-      <button class="btn btn-primary" id="addSlotBtn">+ Publicar cupo</button>
     </div>
   </div>
 
   <div style="margin-top:32px">
-    <h2 class="section-title" style="font-size:22px;text-align:left">Clientes agendados</h2>
+    <h2 class="section-title" style="font-size:22px;text-align:left">Próximas citas</h2>
     <div id="bookingsList"></div>
   </div>
 
@@ -96,15 +131,26 @@
 <div class="modal-overlay" id="slotDetailModal">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <h3>Detalles del cupo</h3>
+      <h3 id="slotDetailTitle">Detalles del cupo</h3>
       <button type="button" class="modal-close" id="closeSlotDetailBtn" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <p id="slotDetailBookedInfo" class="policy-note" hidden></p>
       <div id="slotDetailEditable">
+        <p id="slotDetailScheduleNote" class="policy-note" hidden>Este cupo viene de tu horario semanal. Aquí puedes ponerle descuento, fijarle un servicio, agendar a alguien o quitarlo; su hora y persona se cambian en “Horario semanal”.</p>
+
+        <div class="walkin-box">
+          <label for="walkinName">¿Te llamaron o llegó alguien? Agéndalo tú</label>
+          <div class="walkin-row">
+            <input type="text" id="walkinName" placeholder="Nombre del cliente" maxlength="60">
+            <select id="walkinService" hidden></select>
+            <button type="button" class="btn btn-primary btn-sm" id="walkinBtn">Agendar</button>
+          </div>
+        </div>
+
         <div class="field">
           <label>Día</label>
-          <select id="editSlotDayOffset"></select>
+          <input type="date" id="editSlotDate">
         </div>
         <div class="field">
           <label>Servicio</label>
@@ -138,7 +184,56 @@
     </div>
     <div class="modal-actions" id="slotDetailActionsBooked" hidden>
       <button class="btn btn-outline btn-block" id="cancelSlotDetailBtn">Cerrar</button>
-      <button class="btn btn-primary btn-block" id="reopenSlotBtn">Reabrir cupo (cancelación)</button>
+      <button class="btn btn-primary btn-block" id="reopenSlotBtn">Cancelar cita</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scheduleModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Horario semanal</h3>
+      <button type="button" class="modal-close" id="closeScheduleBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="policy-note">Define tu semana una sola vez: quién trabaja, qué días y a qué horas. CUPO publica solo los cupos de las próximas 4 semanas y los renueva cada vez que entras a tu panel. Las citas ya reservadas nunca se tocan.</p>
+      <div id="scheduleWarning" class="sched-warning" hidden></div>
+      <div id="scheduleCards"></div>
+      <p class="field-hint" id="scheduleStaffHint"></p>
+      <p class="sched-total" id="scheduleTotal"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="cancelScheduleBtn">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="saveScheduleBtn">Guardar horario</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="closeDayModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Cerrar día</h3>
+      <button type="button" class="modal-close" id="closeCloseDayBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="policy-note" id="closeDayText"></p>
+      <div class="field">
+        <label>Hasta (opcional, para cerrar varios días seguidos)</label>
+        <input type="date" id="closeDayTo">
+      </div>
+      <div class="field" id="closeDayWhoField">
+        <label>¿Quién no trabaja?</label>
+        <select id="closeDayWho"></select>
+      </div>
+      <div class="field">
+        <label>Motivo (opcional)</label>
+        <input type="text" id="closeDayReason" maxlength="80" placeholder="Día festivo, vacaciones...">
+      </div>
+      <p class="field-hint" id="closeDayWarning"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="cancelCloseDayBtn">Regresar</button>
+      <button class="btn btn-primary btn-block" id="confirmCloseDayBtn">Cerrar día</button>
     </div>
   </div>
 </div>
@@ -172,11 +267,13 @@
         <label>Catálogo de servicios</label>
         <div id="editServicesRows"></div>
         <button type="button" class="btn btn-outline btn-sm" id="addServiceRowBtn" style="margin-top:8px">+ Agregar servicio</button>
+        <button type="button" class="btn btn-outline btn-sm" id="suggestServicesBtn" style="margin-top:8px">Sugerir servicios de mi categoría</button>
       </div>
       <div class="field">
         <label>Personal / estilistas</label>
         <div id="editStaffRows"></div>
         <button type="button" class="btn btn-outline btn-sm" id="addStaffRowBtn" style="margin-top:8px">+ Agregar persona</button>
+        <span class="field-hint">Qué servicios hace cada quien y sus horarios se definen en “Horario semanal”.</span>
       </div>
     </div>
     <div class="modal-actions">
@@ -205,6 +302,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/schedule.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

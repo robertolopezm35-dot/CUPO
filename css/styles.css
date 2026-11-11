@@ -727,6 +727,8 @@ footer {
   color: var(--white);
   border-color: var(--indigo);
 }
+.slot.mine .price { color: rgba(255, 255, 255, 0.85); }
+.slot.warn { border-style: dashed; border-color: var(--amber); color: var(--amber); }
 
 .empty-state {
   text-align: center;
@@ -810,14 +812,19 @@ footer {
   background: var(--navy);
   color: var(--white);
   padding: 14px 22px;
-  border-radius: 999px;
+  border-radius: 22px;
   font-size: 14px;
   font-weight: 600;
   opacity: 0;
   transition: all 0.25s ease;
   z-index: 200;
   pointer-events: none;
-  white-space: nowrap;
+  /* max-content + tope: un aviso corto queda en una línea y uno largo se
+     parte en vez de salirse de la pantalla en celular. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  line-height: 1.4;
 }
 .toast.show {
   opacity: 1;
@@ -1254,3 +1261,330 @@ footer {
   font-size: 16px;
   padding: 4px 8px;
 }
+
+/* ── AGENDA DEL NEGOCIO: calendario + panel del día ─────────────────────── */
+.agenda-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .agenda-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+}
+.agenda-grid .biz-card { margin-bottom: 0; }
+
+.cal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.cal-title {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  text-align: center;
+  text-transform: capitalize;
+}
+.cal-nav {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--navy);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.cal-nav:hover { background: var(--indigo-light); }
+
+.cal-weekdays, .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-weekdays span {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gray);
+  padding-bottom: 6px;
+}
+
+.cal-day {
+  min-height: 72px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: var(--bg);
+  padding: 5px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  text-align: left;
+  color: var(--navy);
+  overflow: hidden;
+}
+.cal-day:hover { border-color: var(--gray-light); }
+.cal-day.blank { background: transparent; pointer-events: none; }
+.cal-day.past { color: var(--gray); }
+.cal-day.past .cal-tag { opacity: 0.65; }
+/* Rayado = día que no se trabaja según el horario semanal. */
+.cal-day.off {
+  background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 6px, #EBEBF2 6px, #EBEBF2 12px);
+}
+.cal-day.closed { background: #FEF2F2; }
+.cal-day.selected {
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-light);
+}
+.cal-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+.cal-day.today .cal-num { background: var(--indigo); color: var(--white); }
+
+.cal-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  border-radius: 6px;
+  padding: 0 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-tag b { font-weight: 800; }
+.cal-tag i { font-style: normal; }
+.cal-tag.booked { background: var(--indigo); color: var(--white); }
+.cal-tag.free { background: #DCFCE7; color: #166534; }
+.cal-tag.closed { background: var(--red); color: var(--white); }
+.cal-tag.absent { background: var(--amber-bg); color: var(--amber); }
+.cal-tag.off, .cal-tag.planned { color: var(--gray); font-weight: 600; padding: 0 2px; }
+
+/* En celular cada celda mide ~45px: se quedan solo los números (3 citas →
+   "3") y los colores; el detalle completo está en el panel del día. */
+@media (max-width: 560px) {
+  .cal-card { padding: 14px 10px; }
+  .cal-day { min-height: 58px; padding: 4px 2px; align-items: center; }
+  .cal-tag { padding: 0 4px; min-width: 18px; text-align: center; }
+  .cal-tag i { display: none; }
+  .cal-tag.off, .cal-tag.planned { display: none; }
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.cal-legend .dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.cal-legend .dot.today { border-radius: 50%; background: var(--indigo); }
+.cal-legend .dot.booked { background: var(--indigo); }
+.cal-legend .dot.free { background: #86EFAC; }
+.cal-legend .dot.closed { background: var(--red); }
+.cal-legend .dot.off {
+  background: repeating-linear-gradient(135deg, #F1F1F6, #F1F1F6 2px, #C9C9D6 2px, #C9C9D6 4px);
+}
+
+.day-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.day-group {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--gray);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 14px 0 8px;
+}
+.day-group:first-child { margin-top: 0; }
+.day-card .slot { cursor: pointer; }
+.day-card .slot.mine:hover { background: var(--indigo-dark); }
+.day-card .empty-state { padding: 18px 14px; font-size: 13px; }
+.day-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.day-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.day-notice.closed { background: #FEF2F2; color: var(--red); }
+.day-notice.info { background: var(--bg); color: var(--gray); }
+.day-notice button { flex-shrink: 0; }
+
+.reservation-row.clickable { cursor: pointer; }
+.reservation-row.clickable:hover { color: var(--indigo); }
+
+.field input:disabled, .field select:disabled {
+  background: var(--bg);
+  color: var(--gray);
+}
+
+/* Agendar a mano (llamada o alguien que llegó sin reservar) */
+.walkin-box {
+  background: var(--indigo-light);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.walkin-box label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--indigo-dark);
+  margin-bottom: 8px;
+}
+.walkin-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.walkin-row input, .walkin-row select {
+  flex: 1;
+  min-width: 130px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--gray-light);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--navy);
+}
+.walkin-row input:focus, .walkin-row select:focus { outline: none; border-color: var(--indigo); }
+
+/* ── HORARIO SEMANAL (editor) ───────────────────────────────────────────── */
+.modal.modal-wide { max-width: 640px; }
+.sched-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+.sched-card {
+  border: 1.5px solid var(--gray-light);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.sched-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.sched-card-head select, .sched-times select {
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--gray-light);
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--navy);
+}
+.sched-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray);
+  margin-bottom: 6px;
+}
+.sched-services { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.sched-chip {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gray-light);
+  background: var(--white);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.sched-chip.active {
+  background: var(--indigo-light);
+  border-color: var(--indigo);
+  color: var(--indigo-dark);
+}
+.sched-chip.active::before { content: "✓ "; }
+.sched-rule {
+  background: var(--bg);
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.sched-rule.invalid { border-color: var(--red); }
+.sched-rule.invalid .sched-rule-info { color: var(--red); font-weight: 700; }
+.sched-days { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+.sched-day {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gray-light);
+  background: var(--white);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--gray);
+}
+.sched-day.active { background: var(--indigo); border-color: var(--indigo); color: var(--white); }
+.sched-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray);
+}
+.sched-rule-info { font-size: 12px; color: var(--gray); margin-top: 6px; }
+.modal p.sched-empty { margin: 0 0 10px; }
+.modal p.sched-total {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.modal p.field-hint { font-size: 12px; margin: 0; }
