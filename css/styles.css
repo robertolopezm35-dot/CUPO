@@ -1613,9 +1613,14 @@ footer {
   .stat-row.compact .stat-card .lbl { font-size: 11.5px; line-height: 1.3; }
 }
 
-/* Un nombre largo de negocio/cliente ya no se encima con el logo. */
+/* Un nombre largo de negocio/cliente ya no empuja "Salir" fuera de la pantalla:
+   se corta con "…" usando solo el espacio que sobra junto al logo, el avatar y
+   el botón (≈290px) — en celular angosto desaparece y queda el avatar. */
+.dash-header { gap: 12px; }
+.dash-user { min-width: 0; }
 .dash-user > span {
-  max-width: 42vw;
+  min-width: 0;
+  max-width: clamp(0px, calc(100vw - 290px), 42vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

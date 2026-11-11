@@ -675,6 +675,59 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
+  // Diagnóstico: ¿a la base le falta algo que este código necesita? Se corre a
+  // mano desde la consola del sitio ya conectado:
+  //   await SupabaseStore.checkSchema()
+  // y responde { ok, missing: [...] } con cada columna o función que no
+  // existe, para saber qué SQL falta correr (db/migracion-horario-semanal.sql).
+  // Solo lee: las funciones se llaman con ids falsos y fallan sin escribir nada.
+  async function checkSchema() {
+    if (!client) throw new Error("Configura js/supabase-config.js primero.");
+    const columns = {
+      sales: ["original_price", "discount_pct", "staff_name", "client_id", "folio"],
+      slots: ["original_price", "discount_pct", "staff_id", "schedule_key", "flexible"],
+      reservations: ["folio", "walkin_name"],
+      reviews: ["photo_url"],
+      staff: ["services"],
+      businesses: ["photos", "services_catalog", "schedule"],
+      clients: ["last_favorites_check"],
+    };
+    const nobody = "00000000-0000-0000-0000-000000000000";
+    const functions = {
+      book_slot: { p_slot_id: nobody, p_service: null },
+      book_slot_manual: { p_slot_id: nobody, p_client_name: "x", p_service: null },
+      slot_service_price: { p_slot_id: nobody, p_service: null },
+      cancel_reservation: { p_reservation_id: nobody },
+      reopen_slot: { p_slot_id: nobody },
+      add_review: { p_business_id: nobody, p_rating: 5, p_comment: "", p_photo_url: null },
+      has_reservation_at: { p_business_id: nobody },
+      get_my_sales: {},
+      get_new_favorite_slots: {},
+    };
+    const missing = [];
+    for (const [table, cols] of Object.entries(columns)) {
+      for (const col of cols) {
+        const { error } = await client.from(table).select(col).limit(0);
+        if (error) missing.push(table + "." + col);
+      }
+    }
+    for (const [name, args] of Object.entries(functions)) {
+      const { error } = await client.rpc(name, args);
+      if (error && error.code === "PGRST202") missing.push("función " + name);
+    }
+    // Aparte: nombres de quien agenda el negocio que siguen en la tabla pública
+    const legacy = await client.from("slots").select("walkin_name").limit(0);
+    const legacyColumn = !legacy.error;
+    return {
+      ok: missing.length === 0 && !legacyColumn,
+      missing,
+      legacyPublicWalkinColumn: legacyColumn,
+      hint: missing.length || legacyColumn
+        ? "Corre db/migracion-horario-semanal.sql completo en el SQL Editor de Supabase (es seguro repetirlo)."
+        : "La base está al día.",
+    };
+  }
+
   // Crea, con signUp() real, los negocios de ejemplo de Monterrey que
   // el prototipo usa en localStorage. Solo hace falta correrlo una vez,
   // a mano, desde la consola del navegador (no se llama solo):
@@ -764,5 +817,6 @@ const SupabaseStore = (() => {
     getNewFavoriteSlots,
     touchFavoritesCheck,
     seedDemoBusinesses,
+    checkSchema,
   };
 })();

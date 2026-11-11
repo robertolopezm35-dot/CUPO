@@ -606,16 +606,23 @@ un calendario.
 **Datos:** `business.schedule = { rules, closures, skips }`, `staff.services`,
 y en cada cupo `scheduleKey` (de qué turno/día/hora salió), `flexible` y
 `walkinName` (agendado a mano). En Supabase: columnas `businesses.schedule`,
-`staff.services`, `slots.schedule_key`/`flexible`/`walkin_name` (con índice único
-por negocio + llave, para no publicar dos veces el mismo cupo), y funciones
+`staff.services`, `slots.schedule_key`/`flexible` (con índice único por negocio +
+llave, para no publicar dos veces el mismo cupo) y `reservations.walkin_name` (con
+`reservations.client_id` ahora nullable: quien agenda el negocio a mano no tiene
+cuenta; va en `reservations` y NO en `slots` porque `slots` es pública y
+`reservations` solo la ve el negocio dueño — ver "Pasada en vivo y bugs" abajo), y
+funciones
 `slot_service_price` (servicio y precio de un cupo flexible, mismo redondeo que el
 navegador), `book_slot` (ahora recibe el servicio y rechaza cupos que ya
 empezaron), `book_slot_manual`, y `cancel_reservation`/`reopen_slot` actualizadas.
 
-**Acción pendiente tuya:** corre `db/migracion-horario-semanal.sql` completo una vez
-en el SQL Editor de Supabase (es idempotente y no borra nada). Mientras no se corra,
-el sitio sigue funcionando como antes: `supabase-store.js` detecta solo que faltan
-las columnas (`scheduleSupported`) y lo nuevo avisa qué paso falta en vez de fallar.
+**Acción pendiente tuya:** corre `db/migracion-horario-semanal.sql` **completo** en el
+SQL Editor de Supabase (es idempotente y no borra nada; si ya corriste una versión
+anterior, vuelve a correrlo entero — la versión actual además agrega 3 columnas de
+`sales` que `book_slot()` necesita y mueve a un lugar privado los nombres de quienes
+agenda el negocio a mano). Para saber si tu base está al día, abre la consola del
+sitio ya conectado y corre `await SupabaseStore.checkSchema()`: responde
+`{ ok, missing: [...] }` con cada columna o función que falta.
 
 **De paso:** `BUSINESS_SELECT` pedía las reseñas con una lista fija de columnas que
 no incluía `photo_url`, así que en el sitio real las fotos de reseñas se guardaban
@@ -639,18 +646,72 @@ pero nunca se veían. Ahora pide `reviews(*)`/`staff(*)`.
 - El código nuevo sobre el esquema SIN migrar: todo lo anterior sigue funcionando.
 - Contra el Supabase real, solo lectura y sin sesión: su API acepta las consultas
   nuevas (`staff(*)`, `reviews(*)`, cupos filtrados por rango de fechas).
-- **No se probó** escribir contra el Supabase real (necesita la migración corrida).
+- Contra el Supabase real, **con escritura** (ver la sección siguiente).
+
+## Pasada en vivo y bugs encontrados
+
+Se probó contra el Supabase real (el código del repo servido en local, hablando con
+tu proyecto) con 3 cuentas de prueba marcadas — `prueba.negocio@cupo.mx`,
+`prueba.negocio2@cupo.mx` y `prueba.cliente@cupo.mx` (contraseña `PruebaCupo2026`),
+negocio "ZZ Prueba técnica (borrar)" — sin tocar el negocio demo. La prueba vacía lo
+que crea al terminar, pero las cuentas quedan: para borrarlas por completo, en el SQL
+Editor corre `delete from auth.users where email like 'prueba.%@cupo.mx';` (borra en
+cascada su negocio, cupos, ventas y reservas).
+
+**Bugs que salieron de ahí** (todos corregidos y cubiertos por pruebas):
+
+- **Nadie podía reservar (el más grave).** El SQL de la ronda "Dashboard de Ventas"
+  (columnas `sales.original_price`/`discount_pct`/`staff_name`) nunca se corrió en el
+  proyecto real, y mi migración reemplazó `book_slot()` por una versión que las
+  necesita → toda reserva fallaba con "column original_price of relation sales does
+  not exist". La migración ahora las agrega primero. Lección: una "Acción pendiente
+  tuya" sin correr rompe lo siguiente que dependa de ella — por eso existe
+  `SupabaseStore.checkSchema()`.
+- **Los nombres de quien agenda el negocio a mano eran públicos.** Estaban en
+  `slots.walkin_name` y `slots` se lee sin sesión. Ahora van en `reservations`
+  (`client_id` nullable + `walkin_name`); la migración mueve los que ya existían y
+  borra la columna vieja.
+- El mensaje "corre db/migracion-horario-semanal.sql" aparecía ante CUALQUIER error
+  de columna faltante (despistaba justo en el caso anterior): ahora solo sale cuando
+  de verdad falta algo de esa migración.
+- Un cupo flexible con descuento guardaba el precio "desde" sin el descuento en la
+  base (la pantalla lo recalculaba bien, pero el dato quedaba inconsistente con
+  localStorage).
+- Guardar horario/cerrar día dependían de que antes se hubiera leído un negocio (la
+  bandera `scheduleSupported` se llenaba al leer): ahora se resuelve sola.
+- Si la sincronización del horario fallaba una vez al abrir el panel (red caída), no
+  se reintentaba en todo el día: ahora reintenta cada ciclo (hasta 5 veces).
+- Con un nombre de negocio largo, el botón "Salir" se salía de la pantalla en celular
+  (scroll horizontal en las 3 páginas con encabezado); revisado en 390, 360 y 320 px.
+- El "motivo" de un día cerrado se guarda en `businesses.schedule`, que es pública:
+  el campo ahora avisa que cualquiera lo puede leer.
+
+**Probado en vivo, todo bien:** publicar el horario (286 cupos, sin duplicados, con
+fecha vieja para que no cuenten como "nuevos" en favoritos), re-sincronizar no crea ni
+quita nada, descuento en un cupo, quitar un cupo (no regresa tras recargar), cerrar y
+reabrir un día, una sola persona y un rango de días, negocio que trabaja solo (sin
+equipo), y 18 intentos de saltarse las reglas (un cliente o un negocio ajeno
+intentando cambiar horario, nombre, servicios, cupos; agendar a mano en un cupo
+ajeno; reservar sin sesión o como negocio) — todos rechazados.
+
+**Casos límite probados en local** (`explore`): negocio sin equipo, turno sin persona
+conviviendo con el equipo, quitar todos los turnos (las citas se quedan), equipo de 6
+personas en celular, catálogo que cambia después de programar (el cupo queda "Sin
+servicios" y el cliente no lo ve), turno hasta medianoche, y servicios repetidos.
+Comportamiento a saber: agregar días al horario respeta los descuentos que ya
+pusiste a mano, pero cambiar la duración de las citas recrea los cupos y se pierden.
 
 ## Pendiente / decisiones abiertas
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
 que no se puede crear desde aquí) — pendiente a propósito para hacerlo juntos:**
 
-- **Correr `db/migracion-horario-semanal.sql` en Supabase** para activar el horario
-  semanal en el sitio real — ver "Horario semanal y calendario" arriba. Después
-  conviene una pasada en vivo (guardar un horario, reservar un cupo flexible,
-  agendar a mano, cerrar un día): es lo único de esa función sin probar contra el
-  proyecto real.
+- **Correr `db/migracion-horario-semanal.sql` COMPLETO en Supabase** (otra vez, si ya
+  corriste una versión anterior): sin las 3 columnas de `sales` que agrega, **no se
+  puede reservar**. Después, confirmar con `await SupabaseStore.checkSchema()` y
+  repetir la pasada en vivo de lo que dependía de eso: reservar como cliente
+  eligiendo servicio, agendar a mano, cancelar y que el nombre del cliente sea
+  privado (el script de la pasada en vivo ya está armado: solo hay que volver a correrlo).
 - **Horario semanal sin depender de que el negocio entre:** hoy los cupos se
   publican cuando el negocio abre su panel. Para que se renueven solos aunque no
   entre en semanas hace falta un proceso del lado del servidor (ej. `pg_cron` en

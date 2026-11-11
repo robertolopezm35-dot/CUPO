@@ -1310,14 +1310,21 @@
   // El horario semanal solo lo puede "publicar" el propio negocio, así que
   // se pone al corriente cada vez que abre su panel (y si se queda abierto
   // de un día para otro, al cambiar la fecha).
+  // Solo se da por hecho cuando de verdad funcionó: si falla (red caída), se
+  // reintenta en el siguiente ciclo en vez de quedarse sin publicar todo el día.
   let lastSyncDay = null;
+  let syncFailures = 0;
   async function syncIfNeeded() {
-    if (lastSyncDay === todayKey()) return;
-    lastSyncDay = todayKey();
+    const today = todayKey();
+    if (lastSyncDay === today || syncFailures >= 5) return;
     try {
       const result = await DataStore.syncSchedule(business.id);
-      if (result && (result.created || result.removed)) await render({ silent: true });
+      if (!result || result.ok === false) throw new Error((result && result.error) || "sin respuesta");
+      lastSyncDay = today;
+      syncFailures = 0;
+      if (result.created || result.removed) await render({ silent: true });
     } catch (err) {
+      syncFailures++;
       console.error("syncSchedule failed:", err);
     }
   }
