@@ -1,0 +1,16 @@
+{
+  "name": "CUPO — Citas de último momento",
+  "short_name": "CUPO",
+  "description": "Cupos libres de barberías, salones, spas y estéticas en Monterrey. Reserva al instante.",
+  "lang": "es-MX",
+  "start_url": "cliente.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F7F7FB",
+  "theme_color": "#4F46E5",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

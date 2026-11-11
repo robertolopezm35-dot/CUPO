@@ -27,7 +27,10 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
 - `cliente.html` + `js/cliente.js` — panel del cliente: busca y reserva cupos
 - `negocio.html` + `js/negocio.js` — panel del negocio: publica/gestiona su agenda
 - `ventas.html` + `js/ventas.js` — dashboard de ventas del negocio (tipo Bewe): qué se
-  está vendiendo, visible solo para el negocio dueño de la sesión.
+  está vendiendo, visible solo para el negocio dueño de la sesión. **Reescrito el 11 nov 2026**
+  (por hora de la cita, asistencia, ocupación, CSV…): ver "Investigación de diseño/usabilidad y
+  mejoras" para la versión actual; las secciones "Dashboard de Ventas" de abajo describen la
+  primera versión.
 - `css/styles.css` — estilos compartidos (paleta índigo del pitch deck)
 - `js/store.js` — `CupoStore`: la "base de datos" en localStorage, datos semilla, y
   lógica de registro/reservas/áreas/categorías/países/servicios/ventas. Sigue siendo
@@ -36,6 +39,18 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   del proyecto de Supabase. Mientras estén vacíos, no pasa nada distinto.
 - `js/supabase-store.js` — `SupabaseStore`: el mismo catálogo de funciones que
   `CupoStore`, pero async y respaldado por Postgres real en vez de localStorage.
+- `js/contact.js` — `CupoContact`: links de WhatsApp/llamada/mapa y archivo de calendario
+  (`.ics`). Sin DOM ni base; lo usan Ventas, el panel del negocio y el del cliente.
+- `js/site-config.js` — `SITE_CONFIG.contactEmail` (vacío): el correo que muestran las
+  páginas legales. Mientras esté vacío dicen que se publicará, sin inventar uno.
+- `privacidad.html` / `terminos.html` — aviso de privacidad (LFPDPPP, derechos ARCO) y
+  términos y condiciones. Borradores generales, **revísalos con un abogado**.
+- `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, `assets/icon-*.png`,
+  `assets/apple-touch-icon.png`, `assets/og-image.png` — instalable en el celular, SEO y
+  la vista previa al compartir el link.
+- `db/migracion-ventas-agenda.sql` — lo que le falta a una base que ya tenía
+  `schema.sql` + `migracion-horario-semanal.sql` para la ronda "Investigación y mejoras"
+  (ver abajo). Idempotente; una instalación nueva no la necesita.
 - `js/schedule.js` — `CupoSchedule`: la lógica del horario semanal (qué cupos deben
   existir según los turnos, cierres y citas ya hechas). No toca ni el DOM ni la base:
   la usan igual `CupoStore` y `SupabaseStore` — ver "Horario semanal y calendario".
@@ -707,7 +722,126 @@ servicios" y el cliente no lo ve), turno hasta medianoche, y servicios repetidos
 Comportamiento a saber: agregar días al horario respeta los descuentos que ya
 pusiste a mano, pero cambiar la duración de las citas recrea los cupos y se pierden.
 
+## Investigación de diseño/usabilidad y mejoras (11 nov 2026)
+
+Se pidió analizar la plataforma desde las dos posiciones (cliente y negocio), investigar
+qué hace más atractivo y fácil de usar un producto así, y construir lo que faltaba.
+
+**Qué dice la investigación (y qué tan firme es):**
+
+- **Pedir cuenta antes de ver/reservar espanta gente.** Baymard: ~19% de los
+  compradores en línea abandonó una compra por no querer crear una cuenta
+  ([Baymard](https://baymard.com/learn/reduce-cart-abandonment)). Los blogs del sector de
+  belleza coinciden en reservar sin cuenta previa. → **Hecho:** `cliente.html` se puede
+  explorar sin sesión; la cuenta se pide al tocar un cupo y, al entrar, regresa justo a ese
+  cupo (`?negocio=…&slot=…`).
+- **Los recordatorios bajan los no-shows**, en el orden de 30–50% según los proveedores de
+  software (SalonIQ, Esendex, SimplyBook, ReSpark…). **Ojo:** todas son cifras de
+  proveedores con interés comercial, no un estudio independiente. → **Hecho a medias:** el
+  cliente puede agregar la cita a su calendario (`.ics` con alarma de 1 h) y el negocio
+  contacta por WhatsApp; **falta** el recordatorio automático (ver Pendiente).
+- **Reservar rápido y desde el celular** (metas citadas: <90 s, ~3 toques; 73–85% de las
+  reservas de belleza son en móvil — cifras de vendors). Fresha destaca en descubrimiento y
+  Booksy en móvil. → Pestañas de día/categoría en un renglón desplazable, objetivos de 44 px,
+  esqueleto de carga, orden por "lo más pronto" y filtros "próximas 2 horas" y "con
+  descuento", paginación de 12 en 12.
+- **Escasez/urgencia solo si es real, específica y en el momento de decidir** (Booking.com
+  fue demandada por urgencia falsa). → El badge "¡Solo queda 1!" ya usaba el conteo real;
+  ahora además "Próximo cupo: en 25 min".
+- **Color:** no encontré ningún estudio que pruebe que un tono específico (índigo o
+  cualquier otro) convierta más; lo que importa es el **contraste** con el resto de la
+  página. Se mantiene el índigo de marca. Una auditoría automática de contraste (WCAG
+  1.4.3, 4.5:1) en 8 pantallas, escritorio y móvil, solo encontró 4 casos reales (texto
+  atenuado con `opacity`, un rojo en 4.41:1), ya corregidos: 0 fallos.
+- **Accesibilidad (WCAG 2.2):** objetivo mínimo 24×24 px (AA) — el ideal de 44 px es AAA y
+  la guía de Apple. → botones/pestañas/chips a 44 px en móvil, foco visible global y
+  `prefers-reduced-motion`.
+- **La primera impresión visual pesa** (Lindgaard: ~50 ms; efecto halo hacia la
+  credibilidad). → imagen para compartir, íconos, confianza en el landing.
+- **KPIs de un negocio de salón:** ocupación, no-show, ingreso por colaborador y retención
+  (con la advertencia de que la ocupación sola engaña si no se mira el ingreso). → Ventas.
+
+**Lo construido:**
+
+- **Ventas, reescrito** (`js/ventas.js`, `ventas.html`): todo se agrupa por la **hora de
+  la cita** (`sales.starts_at`), no por cuándo se reservó (antes una cita de mañana
+  contaba como venta de hoy). Rango personalizado; ingresos con tendencia; citas
+  atendidas; ticket; **clientes distintos** (antes "clientes atendidos" contaba citas);
+  **por venir**; **ocupación**; **no llegaron**; cancelaciones; "cupos libres por llenar"
+  (cuánto dinero queda en cupos publicados que aún no empiezan); ingresos por día de la
+  semana y por hora (rango dinámico, ya no 9–21 fijo); servicios y colaboradores con %;
+  nuevos vs. recurrentes y mejores clientes; historial con búsqueda, filtros, "Ver más" y
+  **descarga CSV** (neutraliza fórmulas tipo `=CMD` en nombres). Cada cita ya pasada se
+  marca **Llegó / No llegó** (`sales.attendance`, RPC `set_attendance`): una cita sin marcar
+  cuenta como realizada hasta que el negocio diga lo contrario, y solo se insiste con las de
+  las últimas 2 semanas.
+- **Agenda del día** (`negocio.js`): lista de citas con el contacto del cliente (WhatsApp /
+  Llamar, desde `sales.client_phone`), Llegó/No llegó, y detalle para cancelar. Al agendar a
+  mano se puede dejar el teléfono (opcional). "Editar negocio": teléfono/WhatsApp del negocio
+  (`businesses.phone`, público) y **política de cancelación** (`businesses.cancel_hours`).
+- **Política de cancelación real:** antes era solo un texto. Ahora `cancel_reservation()`
+  (y el modo localStorage) rechazan cancelar dentro de las `cancel_hours` previas; el
+  negocio sí puede cancelar siempre. La app oculta el botón y explica por qué.
+- **Mis reservas completas** (`cliente.js`): día y hora, dirección, "Cómo llegar" (Google
+  Maps), WhatsApp/Llamar al negocio, "Agregar al calendario", **Reagendar**, Cancelar,
+  historial con "Reservar de nuevo" y "Calificar".
+- **Confianza/legal:** privacidad, términos, casilla de aceptación obligatoria en ambos
+  registros, footer, FAQ y sección "Reserva con confianza" en el landing, metadatos Open
+  Graph/Twitter, `noindex` en paneles privados, manifest + íconos, `robots.txt`, `sitemap.xml`.
+- **De paso:** el landing se salía 26 px a 360 px de ancho (ya existía); corregido.
+
+**Datos nuevos:** `sales.starts_at/duration_minutes/attendance/client_phone/client_country`
+(`client_country` guarda el código de marcación, ej. `+52`, igual que `clients.country_code`),
+`businesses.phone/cancel_hours`; funciones `book_slot` y `book_slot_manual` (ahora con
+`p_phone`) actualizadas, `cancel_reservation` con el límite, `set_attendance` nueva. Los
+datos de demostración **no llevan teléfonos** (un número inventado podría ser de alguien
+real).
+
+**Compatibilidad con una base sin migrar:** el código nuevo funciona sin correr el SQL (las
+ventas toman la hora de su cupo, asistencia/teléfono avisan "corre
+db/migracion-ventas-agenda.sql"). `SupabaseStore.checkSchema()` ya revisa también lo nuevo.
+
+**Acción pendiente tuya:** correr `db/migracion-ventas-agenda.sql` **completo** en el SQL
+Editor de Supabase (idempotente, no borra nada; las ventas viejas se rellenan con la hora de
+su cupo). Después, en la consola del sitio: `await SupabaseStore.checkSchema()` → debe decir
+"La base está al día".
+
+**Cómo se probó** (todo pasa): unitarias de `schedule.js`; 42 verificaciones del dashboard de
+Ventas con datos inyectados y reloj fijo (cada número calculado a mano); 21 de la agenda y la
+política de cancelación; 37 del panel del cliente (visita → registro → vuelve al cupo, lo más
+pronto, descuentos, paginación, Mis reservas con `.ics`, reagendar, historial); 31 de
+legales/metadatos/manifest/móvil; regresión con los 48 negocios (19); casos límite (26);
+recorrido completo del horario (88 en localStorage, 87 contra Postgres con la migración, 87
+contra Postgres SIN ella, y 15 contra una base de dos migraciones atrás); 68 pruebas SQL con
+rol y JWT de cada usuario (que un negocio/cliente ajeno no pueda marcar asistencia ni ver
+ventas ajenas, validaciones de teléfono, límite de cancelación, columnas/funciones
+idénticas entre "instalación nueva" y "migrada"); y la auditoría de contraste/objetivos
+táctiles. **No se probó** contra el Supabase real (la migración aún no está corrida allí).
+
 ## Pendiente / decisiones abiertas
+
+**Nuevo (11 nov 2026) — necesita algo tuyo:**
+
+- **Correr `db/migracion-ventas-agenda.sql`** en Supabase (ver sección anterior). Después
+  conviene repetir la pasada en vivo con las cuentas de prueba (asistencia, teléfono,
+  política de cancelación contra el proyecto real).
+- **Correo de contacto:** ponlo en `js/site-config.js` (`contactEmail`) para que el aviso de
+  privacidad lo muestre; hoy dice que "se publicará". También hace falta decidir quién es
+  el responsable legal (persona o empresa) y su domicilio, y que **un abogado revise**
+  `privacidad.html` y `terminos.html` (son borradores generales, no asesoría legal).
+- **Recordatorios automáticos** (la medida con más respaldo contra los no-shows, aunque las
+  cifras son de vendors): un correo/WhatsApp 24 h y 2 h antes. Necesita elegir canal y crear
+  la cuenta (Resend ya está configurado como SMTP de Auth pero sin conectar a esto;
+  WhatsApp Business API requiere cuenta de Meta/proveedor). Mientras tanto: `.ics` con
+  alarma y los botones de WhatsApp.
+- **Depósito/anticipo para reducir no-shows** (HU-08) — requiere procesador de pagos.
+- **Ubicación real de cada negocio:** los negocios nuevos nacen con las coordenadas del
+  centro de Monterrey, así que "ordenar por cercanía" no los distingue. Hace falta
+  geocodificar la dirección (servicio externo) o pedir el pin en el mapa.
+- **Programa el horario de tu negocio demo** (`demo.negocio@cupo.mx`): sus cupos son todos
+  del pasado y la lista de clientes lo ve vacío.
+- **Analítica** (Plausible/Simple Analytics): con el aviso de privacidad actual (sin
+  rastreadores) habría que actualizarlo antes de agregarla.
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
 que no se puede crear desde aquí) — pendiente a propósito para hacerlo juntos:**

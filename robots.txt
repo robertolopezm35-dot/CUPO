@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /negocio.html
+Disallow: /ventas.html
+Disallow: /auth.html
+Disallow: /reset-password.html
+
+Sitemap: https://mycupo.com/sitemap.xml

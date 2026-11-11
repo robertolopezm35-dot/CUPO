@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO — Aviso de privacidad</title>
+<meta name="description" content="Qué datos personales recopila CUPO, para qué los usa, con quién los comparte y cómo ejercer tus derechos ARCO.">
+<meta name="theme-color" content="#4F46E5">
+<link rel="canonical" href="https://mycupo.com/privacidad.html">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <div class="nav-links">
+    <a href="cliente.html" class="btn btn-ghost btn-sm">Ver cupos</a>
+  </div>
+</nav>
+
+<main class="legal">
+  <h1>Aviso de privacidad</h1>
+  <p class="legal-date">Última actualización: 11 de noviembre de 2026</p>
+
+  <p>En CUPO nos tomamos en serio tus datos. Este aviso explica, en lenguaje sencillo, qué información recopilamos, para qué la usamos y qué puedes hacer con ella, conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP).</p>
+
+  <h2>1. Quién es el responsable</h2>
+  <p>El responsable del tratamiento de tus datos personales es <strong>CUPO</strong>, plataforma con sede en Monterrey, Nuevo León, México (<a href="https://mycupo.com">mycupo.com</a>).</p>
+
+  <h2>2. Qué datos recopilamos</h2>
+  <p><strong>Si eres cliente:</strong> nombre y apellido, correo electrónico, teléfono, contraseña (se guarda cifrada por el proveedor de autenticación; nosotros nunca la vemos), tus reservas y su historial, tus negocios favoritos y las reseñas (con sus fotos) que decidas publicar.</p>
+  <p><strong>Si eres un negocio:</strong> nombre del negocio, categoría, dirección, correo, teléfono (opcional), servicios y precios, fotos, nombres de tu equipo, tu horario y las citas que recibes.</p>
+  <p><strong>Ubicación:</strong> solo si tocas “Ordenar por cercanía”, tu navegador te pide permiso y calculamos la distancia en tu propio dispositivo. No guardamos tu ubicación.</p>
+  <p>No recopilamos datos de tarjetas ni de pagos: hoy se paga directamente en el negocio.</p>
+
+  <h2>3. Para qué usamos tus datos</h2>
+  <ul>
+    <li>Crear y mantener tu cuenta, y mantener tu sesión iniciada.</li>
+    <li>Hacer posible tu reserva: el negocio necesita saber quién eres y cómo contactarte sobre tu cita.</li>
+    <li>Mostrar reseñas de quienes sí fueron atendidos.</li>
+    <li>Recuperar tu contraseña por correo.</li>
+    <li>Mejorar el servicio y resolver problemas técnicos.</li>
+  </ul>
+  <p>No vendemos tus datos ni los usamos para publicidad de terceros.</p>
+
+  <h2>4. Con quién los compartimos</h2>
+  <ul>
+    <li><strong>El negocio donde reservas:</strong> ve tu nombre, tu teléfono, el servicio y la hora de tu cita, para atenderte y avisarte si algo cambia. Un negocio nunca ve las reservas de otros negocios ni los datos de clientes que no reservaron con él.</li>
+    <li><strong>Otros usuarios:</strong> tus reseñas son públicas y muestran tu nombre, tu calificación, tu comentario y tu foto si la agregas. Las fotos que sube un negocio a su perfil también son públicas.</li>
+    <li><strong>Proveedores que nos prestan infraestructura:</strong> Supabase (base de datos, autenticación y almacenamiento de archivos), GitHub Pages y Cloudflare (alojamiento y red del sitio). Tratan los datos solo para darnos ese servicio.</li>
+    <li><strong>Autoridades</strong>, cuando una ley o una orden válida lo exija.</li>
+  </ul>
+
+  <h2>5. Almacenamiento en tu navegador</h2>
+  <p>Usamos el almacenamiento local de tu navegador para mantener tu sesión y recordar preferencias. No usamos cookies de publicidad ni herramientas de analítica de terceros. Si algún día lo hacemos, actualizaremos este aviso antes.</p>
+
+  <h2>6. Cuánto tiempo los conservamos</h2>
+  <p>Mientras tu cuenta esté activa y el tiempo necesario para cumplir obligaciones legales. Puedes pedir que eliminemos tu cuenta en cualquier momento.</p>
+
+  <h2>7. Tus derechos (ARCO) y cómo ejercerlos</h2>
+  <p>Tienes derecho a <strong>Acceder</strong> a tus datos, <strong>Rectificarlos</strong> si son inexactos, <strong>Cancelarlos</strong> y <strong>Oponerte</strong> a su uso, así como a revocar tu consentimiento. Para ejercerlos, escríbenos a <span data-contact-email>el correo de contacto que se publicará en esta página</span> indicando tu nombre, el correo de tu cuenta y qué quieres hacer. Te responderemos en un plazo máximo de 20 días hábiles.</p>
+
+  <h2>8. Menores de edad</h2>
+  <p>CUPO no está dirigido a menores de edad. Si eres menor, usa la plataforma solo con la supervisión de tu madre, padre o tutor.</p>
+
+  <h2>9. Cambios a este aviso</h2>
+  <p>Si cambiamos este aviso, publicaremos la nueva versión aquí con su fecha de actualización.</p>
+
+  <p class="legal-links"><a href="terminos.html">Términos y condiciones</a> · <a href="index.html">Volver al inicio</a></p>
+</main>
+
+<footer>
+  <div class="footer-links"><a href="terminos.html">Términos y condiciones</a><a href="privacidad.html">Aviso de privacidad</a></div>
+  &copy; 2026 CUPO · Monterrey, N.L.
+</footer>
+
+<script src="js/site-config.js"></script>
+<script>
+  (function () {
+    var email = window.SITE_CONFIG && window.SITE_CONFIG.contactEmail;
+    if (!email) return;
+    document.querySelectorAll("[data-contact-email]").forEach(function (el) {
+      var a = document.createElement("a");
+      a.href = "mailto:" + email;
+      a.textContent = email;
+      el.replaceWith(a);
+    });
+  })();
+</script>
+</body>
+</html>

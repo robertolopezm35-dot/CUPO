@@ -3,7 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CUPO — Citas de último momento</title>
+<title>CUPO — Citas de último momento en barberías, salones y spas</title>
+<meta name="description" content="Ve en tiempo real los cupos libres de barberías, salones, spas y estéticas en Monterrey y reserva al instante. Reservar es gratis: pagas en el negocio.">
+<link rel="canonical" href="https://mycupo.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CUPO">
+<meta property="og:locale" content="es_MX">
+<meta property="og:title" content="CUPO — Citas de último momento, al instante">
+<meta property="og:description" content="Cupos libres hoy en barberías, salones, spas y estéticas de Monterrey. Reserva en segundos y paga en el negocio.">
+<meta property="og:url" content="https://mycupo.com/">
+<meta property="og:image" content="https://mycupo.com/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -17,12 +32,13 @@
   </div>
 </nav>
 
+<main>
 <header class="hero">
   <div class="eyebrow">Espacios de última hora, en tiempo real</div>
   <h1>No dejes que una <span>cancelación</span><br>se convierta en un hueco vacío</h1>
   <p>CUPO conecta a barberías, salones, spas y estéticas con clientes que buscan una cita ahora mismo, cerca de ellos.</p>
   <div class="hero-actions">
-    <a href="auth.html?mode=register&role=cliente" class="btn btn-primary">Buscar un cupo</a>
+    <a href="cliente.html" class="btn btn-primary">Buscar un cupo</a>
     <a href="auth.html?mode=register&role=negocio" class="btn btn-outline">Registrar mi negocio</a>
   </div>
 
@@ -53,7 +69,7 @@
       <div class="split-card">
         <h3>Para clientes</h3>
         <p>Consulta en un solo lugar la disponibilidad real de negocios cerca de ti y reserva al instante, sin escribirle a cinco lugares por WhatsApp.</p>
-        <a href="auth.html?mode=register&role=cliente" class="btn btn-primary btn-sm">Soy cliente</a>
+        <a href="cliente.html" class="btn btn-primary btn-sm">Ver cupos disponibles</a>
       </div>
       <div class="split-card">
         <h3>Para negocios</h3>
@@ -88,6 +104,18 @@
   </div>
 </section>
 
+<section class="section" style="background:var(--white)">
+  <div class="container">
+    <h2 class="section-title">Reserva con confianza</h2>
+    <p class="section-sub">Lo que hace a CUPO diferente de escribirle a cada negocio por WhatsApp.</p>
+    <div class="trust-row">
+      <div class="trust-item"><div class="ico">⚡</div><strong>Disponibilidad real</strong><span>Solo ves cupos que el negocio tiene libres ahora. Si se ocupa, desaparece al instante.</span></div>
+      <div class="trust-item"><div class="ico">⭐</div><strong>Reseñas verificadas</strong><span>Solo puede opinar quien ya reservó en ese negocio. Nada de reseñas anónimas.</span></div>
+      <div class="trust-item"><div class="ico">💵</div><strong>Pagas en el negocio</strong><span>Reservar es gratis y sin tarjeta. Cancelas sin costo hasta el límite que cada negocio define.</span></div>
+    </div>
+  </div>
+</section>
+
 <section class="section">
   <div class="container">
     <h2 class="section-title">Áreas disponibles</h2>
@@ -105,7 +133,7 @@
           <div class="card center" style="padding:14px;text-align:center">🧴<div style="font-size:13px;font-weight:700;margin-top:6px">Estética facial</div></div>
         </div>
       </div>
-      <div class="split-card" style="border-top-color:var(--gray-light);opacity:0.85">
+      <div class="split-card" style="border-top-color:var(--gray-light)">
         <h3>🩺 Doctores <span class="soon-badge">Pronto</span></h3>
         <p>Citas médicas de último momento, cerca de ti. Muy pronto en CUPO.</p>
       </div>
@@ -113,8 +141,25 @@
   </div>
 </section>
 
+<section class="section" style="background:var(--white)">
+  <div class="container">
+    <h2 class="section-title">Preguntas frecuentes</h2>
+    <div class="faq">
+      <details><summary>¿Necesito una cuenta para ver los cupos?</summary><p>No. Puedes ver todos los cupos sin registrarte. La cuenta se pide hasta el momento de reservar, y al entrar regresas justo al cupo que elegiste.</p></details>
+      <details><summary>¿Cuánto cuesta reservar?</summary><p>Nada. Reservar en CUPO es gratis y no pedimos tarjeta: el pago se hace directamente en el negocio, por los medios que él acepte.</p></details>
+      <details><summary>¿Cómo sé que mi cita está confirmada?</summary><p>Al reservar recibes un folio (por ejemplo CUPO-AB12CD) y tu cita aparece en “Mis reservas” con la dirección, un botón para llegar en el mapa y otro para agregarla a tu calendario.</p></details>
+      <details><summary>¿Puedo cancelar o cambiar mi cita?</summary><p>Sí, desde “Mis reservas”, sin costo, hasta el límite de horas que define cada negocio (lo ves antes de confirmar). Para cambiarla, elige “Reagendar”: cancela esa cita y te muestra otros horarios del mismo negocio.</p></details>
+      <details><summary>Tengo un negocio, ¿cómo publico mis cupos?</summary><p>Crea tu cuenta de negocio, agrega tus servicios y define tu horario semanal una sola vez: los cupos se publican solos para las próximas semanas. Puedes cerrar días, agendar a mano a quien te llama y ver tus ventas.</p></details>
+      <details><summary>¿Qué pasa con mis datos?</summary><p>Los usamos solo para tu cuenta y tus reservas, y el negocio donde reservas ve tu nombre y teléfono para atenderte. No los vendemos. Lee el <a href="privacidad.html" style="color:var(--indigo);text-decoration:underline">Aviso de privacidad</a>.</p></details>
+    </div>
+  </div>
+</section>
+
+</main>
+
 <footer>
-  &copy; 2026 CUPO · Trabajo decente y crecimiento económico (ODS 8)
+  <div class="footer-links"><a href="terminos.html">Términos y condiciones</a><a href="privacidad.html">Aviso de privacidad</a><a href="auth.html?mode=register&amp;role=negocio">Registra tu negocio</a></div>
+  &copy; 2026 CUPO · Monterrey, N.L. · Trabajo decente y crecimiento económico (ODS 8)
 </footer>
 
 </body>

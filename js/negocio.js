@@ -218,6 +218,62 @@
       : amount;
   }
 
+  // slotId → su venta (teléfono, asistencia). Se llena en render().
+  let salesBySlot = new Map();
+
+  function waLink(sale, name) {
+    return CupoContact.whatsappUrl(sale && sale.clientCountry, sale && sale.clientPhone, "Hola " + String(name || "").split(" ")[0] + ", te escribimos de " + business.name + " sobre tu cita. ");
+  }
+
+  // "Citas del día": una fila por cita con quién es, cómo contactarle y, si ya
+  // empezó, si llegó o no. Tocar la fila abre el detalle (cancelar, etc.).
+  function renderDayAgenda(slots) {
+    const el = $("dayAgenda");
+    const booked = slots.filter((s) => s.status === "booked").sort((a, b) => a.time - b.time);
+    if (!booked.length) {
+      el.innerHTML = "";
+      return;
+    }
+    const now = Date.now();
+    el.innerHTML = `<p class="day-group">Citas del día (${booked.length})</p><div class="agenda-list">` + booked.map((s) => {
+      const sale = salesBySlot.get(s.id);
+      const wa = waLink(sale, s.clientName);
+      const tel = sale ? CupoContact.telUrl(sale.clientCountry, sale.clientPhone) : null;
+      const started = s.time <= now;
+      const att = sale ? sale.attendance : "pendiente";
+      let status = "";
+      if (sale && started) {
+        status = att === "pendiente"
+          ? `<button type="button" class="att-btn ok" data-att="asistio" data-sale="${esc(sale.id)}">✓ Llegó</button><button type="button" class="att-btn no" data-att="no_asistio" data-sale="${esc(sale.id)}">✗ No llegó</button>`
+          : `<button type="button" class="att-btn undo ${att === "no_asistio" ? "is-no" : ""}" data-att="pendiente" data-sale="${esc(sale.id)}">${att === "asistio" ? "✓ Llegó" : "✗ No llegó"}<span>cambiar</span></button>`;
+      } else if (!started) {
+        status = '<span class="sale-badge upcoming">Por venir</span>';
+      }
+      return `<div class="agenda-row ${att === "no_asistio" ? "noshow" : ""}" data-slot="${esc(s.id)}">
+        <button type="button" class="agenda-main" data-open="${esc(s.id)}" aria-label="Ver la cita de ${esc(s.clientName || "cliente")} a las ${esc(s.label)}">
+          <span class="agenda-time">${esc(s.label)}</span>
+          <span class="agenda-who"><strong>${esc(s.clientName || "Reservado")}${s.walkinName ? " <em>(agendado por ti)</em>" : ""}</strong>
+            <span>${esc(s.service || "Servicio")} · $${s.price}${s.staffName ? " · con " + esc(s.staffName) : ""}</span></span>
+        </button>
+        <div class="agenda-side">
+          ${(wa || tel) ? `<span class="sale-contact">${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}${tel ? `<a href="${esc(tel)}">Llamar</a>` : ""}</span>` : ""}
+          <span class="agenda-status">${status}</span>
+        </div>
+      </div>`;
+    }).join("") + "</div>";
+    el.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => openSlotDetail(b.dataset.open)));
+    el.querySelectorAll("button[data-att]").forEach((b) => b.addEventListener("click", async () => {
+      b.disabled = true;
+      const result = await DataStore.setAttendance(business.id, b.dataset.sale, b.dataset.att);
+      if (!result || result.ok === false) {
+        b.disabled = false;
+        showToast((result && result.error) || "No se pudo guardar. Intenta de nuevo.");
+        return;
+      }
+      await render({ silent: true });
+    }));
+  }
+
   function agendaSlotHtml(s, showStaff) {
     const d = S.describeSlot(business, s);
     const staff = showStaff && s.staffName ? `<span class="price">${esc(s.staffName)}</span>` : "";
@@ -298,6 +354,8 @@
         await render({ silent: true });
       });
     });
+
+    renderDayAgenda(slots);
 
     const daySlots = $("daySlots");
     if (!slots.length) {
@@ -509,6 +567,7 @@
     if (!slot) return;
     detailSlotId = slotId;
     const available = slot.status === "available";
+    $("slotDetailContact").hidden = true;
     $("slotDetailEditable").hidden = !available;
     $("slotDetailBookedInfo").hidden = available;
     $("slotDetailActionsAvailable").hidden = !available;
@@ -531,6 +590,7 @@
       [editSlotDate, editSlotHour, $("editSlotDuration"), editSlotStaff].forEach((el) => { el.disabled = generated; });
 
       $("walkinName").value = "";
+      $("walkinPhone").value = "";
       const options = S.slotOptions(business, slot);
       const walkinService = $("walkinService");
       walkinService.hidden = !(slot.flexible && options.length > 1);
@@ -544,6 +604,13 @@
         `${slot.staffName ? " · con " + slot.staffName : ""} · $${slot.price}.` +
         (upcoming ? " Si cancelas la cita, el cupo vuelve a quedar libre para alguien más." : "");
       $("reopenSlotBtn").hidden = !upcoming;
+      const sale = salesBySlot.get(slot.id);
+      const wa = waLink(sale, slot.clientName);
+      const tel = sale ? CupoContact.telUrl(sale.clientCountry, sale.clientPhone) : null;
+      const contact = $("slotDetailContact");
+      contact.hidden = !(wa || tel);
+      contact.innerHTML = (wa ? `<a class="btn btn-outline btn-sm" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : "")
+        + (tel ? `<a class="btn btn-outline btn-sm" href="${esc(tel)}">Llamar ${esc(CupoContact.prettyPhone(sale.clientPhone))}</a>` : "");
     }
     slotDetailModal.classList.add("show");
   }
@@ -616,9 +683,16 @@
       return;
     }
     const walkinService = $("walkinService");
+    const phone = $("walkinPhone").value.replace(/\D/g, "");
+    if (phone && phone.length !== 10) {
+      showToast("El teléfono debe tener 10 dígitos (o déjalo vacío).");
+      $("walkinPhone").focus();
+      return;
+    }
     walkinBtn.disabled = true;
     const result = await DataStore.bookSlotManual(business.id, detailSlotId, {
       clientName,
+      phone,
       service: walkinService.hidden ? null : walkinService.value,
     });
     walkinBtn.disabled = false;
@@ -1019,6 +1093,8 @@
       name: $("editName").value,
       category: $("editCategory").value,
       address: $("editAddress").value,
+      phone: $("editPhone").value,
+      cancelHours: $("editCancelHours").value,
       photos: $("editPhotos").value,
       services: Array.from(document.querySelectorAll("#editServicesRows .edit-row")).map((row) => [
         row.querySelector(".svc-name").value,
@@ -1035,6 +1111,14 @@
     $("editName").value = business.name;
     $("editCategory").value = business.category;
     $("editAddress").value = business.address;
+    $("editPhone").value = business.phone || "";
+    // Si el negocio trae un valor distinto de las opciones, se agrega para no perderlo.
+    const hours = String(business.cancelHours != null ? business.cancelHours : 1);
+    const hoursSelect = $("editCancelHours");
+    if (!Array.from(hoursSelect.options).some((o) => o.value === hours)) {
+      hoursSelect.add(new Option("Hasta " + hours + " h antes", hours));
+    }
+    hoursSelect.value = hours;
     $("editPhotos").value = (business.photos || []).join("\n");
     editPhotoFileInput.value = "";
 
@@ -1066,6 +1150,13 @@
     const category = $("editCategory").value;
     const address = $("editAddress").value.trim();
     if (!name || !address) return;
+    const phone = $("editPhone").value.replace(/\D/g, "");
+    if (phone && phone.length !== 10) {
+      showToast("El teléfono del negocio debe tener 10 dígitos (o déjalo vacío).");
+      $("editPhone").focus();
+      return;
+    }
+    const cancelHours = parseInt($("editCancelHours").value, 10);
 
     const photos = $("editPhotos").value
       .split("\n").map((s) => s.trim()).filter(Boolean);
@@ -1088,7 +1179,7 @@
     })).filter((s) => s.name);
 
     saveEditBtn.disabled = true;
-    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff });
+    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours });
     if (result && result.ok === false) {
       saveEditBtn.disabled = false;
       showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
@@ -1299,6 +1390,18 @@
       return;
     }
     if (!business) return;
+    // Teléfono y asistencia de cada cita viven en las ventas (solo las ve el
+    // propio negocio). Si falla leerlas se conserva lo último que se tenía.
+    try {
+      const sales = await DataStore.getSales(business.id);
+      salesBySlot = new Map();
+      sales
+        .filter((v) => v.status === "completada" && v.slotId)
+        .sort((a, b) => a.date - b.date)
+        .forEach((v) => salesBySlot.set(v.slotId, v));
+    } catch (err) {
+      console.error("getSales failed:", err);
+    }
     buildDayIndex();
     $("scheduleNudge").hidden = S.activeRules(business).length > 0;
     renderStats();

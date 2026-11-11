@@ -53,6 +53,11 @@ create table public.businesses (
   -- semana, los días cerrados y los cupos del horario quitados a mano.
   -- Forma: { "rules": [...], "closures": [...], "skips": [...] }.
   schedule jsonb not null default '{}'::jsonb,
+  -- Teléfono/WhatsApp del negocio (10 dígitos, público): el cliente lo usa
+  -- desde "Mis reservas" para avisar o preguntar algo.
+  phone text check (phone is null or phone ~ '^\d{10}$'),
+  -- Hasta cuántas horas antes de la cita puede cancelar el cliente sin costo.
+  cancel_hours int not null default 1 check (cancel_hours between 0 and 72),
   created_at timestamptz not null default now()
 );
 
@@ -134,6 +139,17 @@ create table public.sales (
   staff_name text,
   client_name text,
   folio text,
+  -- La hora de la CITA (no la de la reserva): el dashboard de Ventas agrupa
+  -- por cuándo se atiende, no por cuándo se reservó. created_at sigue siendo
+  -- el momento en que se hizo la reserva.
+  starts_at timestamptz,
+  duration_minutes int,
+  -- Lo marca el negocio: 'pendiente' (aún no se sabe), 'asistio' o 'no_asistio'.
+  attendance text not null default 'pendiente' check (attendance in ('pendiente', 'asistio', 'no_asistio')),
+  -- Teléfono de quien reservó (para que el negocio lo contacte). Esta tabla
+  -- solo la ve el negocio dueño (y cada cliente sus propias filas).
+  client_phone text,
+  client_country text, -- código de marcación tal cual lo guarda clients.country_code (ej. +52)
   status text not null default 'completada' check (status in ('completada', 'cancelada')),
   created_at timestamptz not null default now()
 );
@@ -141,6 +157,7 @@ create table public.sales (
 create index sales_business_id_idx on public.sales (business_id);
 create index sales_slot_id_idx on public.sales (slot_id);
 create index sales_client_id_idx on public.sales (client_id);
+create index sales_starts_at_idx on public.sales (business_id, starts_at);
 
 -- ── Reseñas 1-5 estrellas (HU-06) ──────────────────────────────────────────
 -- Un cliente solo puede tener una reseña por negocio (se actualiza si deja
@@ -380,11 +397,14 @@ as $$
 declare
   v_reservation public.reservations;
   v_client_name text;
+  v_client_phone text;
+  v_client_country text;
   v_slot public.slots;
   v_folio text;
   v_staff_name text;
 begin
-  select first_name || ' ' || last_name into v_client_name
+  select first_name || ' ' || last_name, phone, country_code
+  into v_client_name, v_client_phone, v_client_country
   from public.clients where id = auth.uid();
 
   if v_client_name is null then
@@ -420,8 +440,12 @@ begin
   values (p_slot_id, auth.uid(), v_folio)
   returning * into v_reservation;
 
-  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status, original_price, discount_pct, staff_name)
-  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_client_name, auth.uid(), v_folio, 'completada', v_slot.original_price, v_slot.discount_pct, v_staff_name);
+  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status,
+                            original_price, discount_pct, staff_name,
+                            starts_at, duration_minutes, client_phone, client_country)
+  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_client_name, auth.uid(), v_folio, 'completada',
+          v_slot.original_price, v_slot.discount_pct, v_staff_name,
+          v_slot.starts_at, v_slot.duration_minutes, v_client_phone, v_client_country);
 
   return v_reservation;
 end;
@@ -429,7 +453,7 @@ $$;
 
 -- El negocio agenda él mismo a alguien que llamó o llegó sin reservar por
 -- la app: ocupa el cupo a su nombre y cuenta como venta (sin client_id).
-create or replace function public.book_slot_manual(p_slot_id uuid, p_client_name text, p_service text default null)
+create or replace function public.book_slot_manual(p_slot_id uuid, p_client_name text, p_service text default null, p_phone text default null)
 returns text
 language plpgsql
 security definer
@@ -437,12 +461,16 @@ set search_path = public
 as $$
 declare
   v_name text := trim(coalesce(p_client_name, ''));
+  v_phone text := nullif(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), '');
   v_slot public.slots;
   v_folio text;
   v_staff_name text;
 begin
   if v_name = '' then
     raise exception 'Escribe el nombre del cliente.';
+  end if;
+  if v_phone is not null and v_phone !~ '^\d{10}$' then
+    raise exception 'El teléfono debe tener 10 dígitos.';
   end if;
 
   update public.slots
@@ -473,8 +501,12 @@ begin
   insert into public.reservations (slot_id, client_id, walkin_name, folio)
   values (p_slot_id, null, v_name, v_folio);
 
-  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status, original_price, discount_pct, staff_name)
-  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_name, null, v_folio, 'completada', v_slot.original_price, v_slot.discount_pct, v_staff_name);
+  insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status,
+                            original_price, discount_pct, staff_name,
+                            starts_at, duration_minutes, client_phone, client_country)
+  values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_name, null, v_folio, 'completada',
+          v_slot.original_price, v_slot.discount_pct, v_staff_name,
+          v_slot.starts_at, v_slot.duration_minutes, v_phone, case when v_phone is null then null else '+52' end);
 
   return v_folio;
 end;
@@ -488,13 +520,22 @@ set search_path = public
 as $$
 declare
   v_slot_id uuid;
+  v_starts_at timestamptz;
+  v_hours int;
 begin
-  select slot_id into v_slot_id
-  from public.reservations
-  where id = p_reservation_id and client_id = auth.uid();
+  select r.slot_id, s.starts_at, b.cancel_hours
+  into v_slot_id, v_starts_at, v_hours
+  from public.reservations r
+  join public.slots s on s.id = r.slot_id
+  join public.businesses b on b.id = s.business_id
+  where r.id = p_reservation_id and r.client_id = auth.uid();
 
   if v_slot_id is null then
     raise exception 'No se encontró esa reserva.';
+  end if;
+
+  if now() > v_starts_at - make_interval(hours => v_hours) then
+    raise exception 'Ya no se puede cancelar desde la app (faltan menos de % h para tu cita). Contacta al negocio.', v_hours;
   end if;
 
   delete from public.reservations where id = p_reservation_id;
@@ -538,6 +579,28 @@ begin
     where slot_id = p_slot_id and status = 'completada'
     order by created_at desc limit 1
   );
+end;
+$$;
+
+-- El negocio marca si el cliente llegó o no a su cita (solo sobre sus ventas).
+create or replace function public.set_attendance(p_sale_id uuid, p_attendance text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_attendance not in ('pendiente', 'asistio', 'no_asistio') then
+    raise exception 'Estado de asistencia inválido.';
+  end if;
+
+  update public.sales
+  set attendance = p_attendance
+  where id = p_sale_id and business_id = auth.uid() and status = 'completada';
+
+  if not found then
+    raise exception 'No se encontró esa cita.';
+  end if;
 end;
 $$;
 

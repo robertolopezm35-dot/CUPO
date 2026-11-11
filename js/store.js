@@ -392,9 +392,16 @@ const CupoStore = (() => {
       const service = services[Math.floor(Math.random() * services.length)];
       const clientName = DEMO_CLIENT_NAMES[Math.floor(Math.random() * DEMO_CLIENT_NAMES.length)];
       const slotId = cancelled ? null : "ps" + Math.random().toString(36).slice(2, 9);
+      // Reservada entre 1 hora y ~2 días antes de la cita; el 8% de las citas
+      // pasadas no se presentó (el resto "asistió"). Sin teléfono a propósito:
+      // un número inventado podría ser de una persona real.
+      const lead = 3600000 + Math.floor(Math.random() * 2 * 86400000);
       sales.push({
         id: "v" + Math.random().toString(36).slice(2, 9),
-        date: time,
+        date: time - lead,
+        startsAt: time,
+        duration: 45,
+        attendance: cancelled ? "pendiente" : Math.random() < 0.08 ? "no_asistio" : "asistio",
         service,
         price,
         originalPrice: discounted ? original : null,
@@ -757,6 +764,8 @@ const CupoStore = (() => {
       photos: [],
       staff: [],
       schedule: { rules: [], closures: [], skips: [] },
+      phone: null,
+      cancelHours: 1,
     };
     businesses.push(business);
     saveBusinesses(businesses);
@@ -776,11 +785,16 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
-  function recordSale(business, slot, { clientName, clientId, folio }) {
+  function recordSale(business, slot, { clientName, clientId, folio, clientPhone, clientCountry }) {
     if (!Array.isArray(business.sales)) business.sales = [];
     business.sales.push({
       id: "v" + Math.random().toString(36).slice(2, 9),
+      // date = cuándo se hizo la reserva; startsAt = cuándo es la CITA (el
+      // dashboard de Ventas agrupa por esta última).
       date: Date.now(),
+      startsAt: slot.time,
+      duration: slot.duration || null,
+      attendance: "pendiente",
       service: slot.service || null,
       price: slot.price,
       originalPrice: slot.originalPrice || null,
@@ -788,6 +802,8 @@ const CupoStore = (() => {
       staffName: slot.staffName || null,
       clientName,
       clientId,
+      clientPhone: clientPhone || null,
+      clientCountry: clientCountry || null,
       slotId: slot.id,
       folio,
       status: "completada",
@@ -808,7 +824,14 @@ const CupoStore = (() => {
     slot.status = "booked";
     slot.clientId = client.id;
     slot.clientName = client.name;
-    recordSale(business, slot, { clientName: client.name, clientId: client.id, folio });
+    const stored = getClients().find((c) => c.id === client.id);
+    recordSale(business, slot, {
+      clientName: client.name,
+      clientId: client.id,
+      folio,
+      clientPhone: stored ? stored.phone : null,
+      clientCountry: stored ? stored.countryCode : null,
+    });
     saveBusinesses(businesses);
 
     const clients = getClients();
@@ -819,6 +842,8 @@ const CupoStore = (() => {
         businessName: business.name,
         slotId,
         label: slot.label,
+        time: slot.time,
+        address: business.address,
         price: slot.price,
         service: slot.service || null,
         staffName: slot.staffName || null,
@@ -832,9 +857,11 @@ const CupoStore = (() => {
 
   // El negocio agenda él mismo a alguien que llamó o llegó sin reservar por
   // la app: el cupo queda ocupado a nombre de esa persona y cuenta como venta.
-  function bookSlotManual(businessId, slotId, { clientName, service } = {}) {
+  function bookSlotManual(businessId, slotId, { clientName, service, phone } = {}) {
     const name = (clientName || "").trim();
     if (!name) return { ok: false, error: "Escribe el nombre del cliente." };
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (digits && digits.length !== 10) return { ok: false, error: "El teléfono debe tener 10 dígitos." };
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false, error: "Negocio no encontrado." };
@@ -849,7 +876,7 @@ const CupoStore = (() => {
     slot.clientId = null;
     slot.clientName = name;
     slot.walkinName = name;
-    recordSale(business, slot, { clientName: name, clientId: null, folio });
+    recordSale(business, slot, { clientName: name, clientId: null, folio, clientPhone: digits || null, clientCountry: digits ? "+52" : null });
     saveBusinesses(businesses);
     return { ok: true, folio };
   }
@@ -1068,6 +1095,12 @@ const CupoStore = (() => {
     const business = businesses.find((b) => b.id === businessId);
     if (business) {
       const slot = business.slots.find((s) => s.id === slotId);
+      // Mismo límite que exige la base real (cancel_hours): el cliente ya no
+      // puede cancelar desde la app muy cerca de la cita.
+      const hours = cancelHoursOf(business);
+      if (slot && Date.now() > slot.time - hours * 3600000) {
+        return { ok: false, error: "Ya no se puede cancelar desde la app (faltan menos de " + hours + " h para tu cita). Contacta al negocio." };
+      }
       if (slot) {
         freeSlot(business, slot);
       } else {
@@ -1088,7 +1121,12 @@ const CupoStore = (() => {
     return { ok: true };
   }
 
-  function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff }) {
+  function cancelHoursOf(business) {
+    const n = parseInt(business && business.cancelHours, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 1;
+  }
+
+  function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false };
@@ -1097,6 +1135,8 @@ const CupoStore = (() => {
     business.address = address;
     if (servicesCatalog !== undefined) business.servicesCatalog = servicesCatalog;
     if (photos !== undefined) business.photos = photos;
+    if (phone !== undefined) business.phone = String(phone || "").replace(/\D/g, "") || null;
+    if (cancelHours !== undefined) business.cancelHours = Math.max(0, Math.min(72, parseInt(cancelHours, 10) || 0));
     if (staff !== undefined) {
       // "Editar negocio" solo manda id + nombre: lo que hace cada persona
       // (staff.services, se edita en Horario semanal) no se debe perder.
@@ -1110,10 +1150,29 @@ const CupoStore = (() => {
     return { ok: true, business };
   }
 
+  // Ventas guardadas antes de que existieran la hora de la cita y la
+  // asistencia: sin confirmar, y la hora de la cita la recupera Ventas de la
+  // hora del cupo (o, si ya no existe, del momento de la venta).
   function getSales(businessId) {
     const business = getBusinessById(businessId);
     if (!business) return [];
-    return (business.sales || []).slice().sort((a, b) => b.date - a.date);
+    return (business.sales || [])
+      .map((v) => ({ ...v, attendance: v.attendance || "pendiente" }))
+      .sort((a, b) => (b.startsAt || b.date) - (a.startsAt || a.date));
+  }
+
+  // El negocio marca si el cliente llegó a su cita.
+  function setAttendance(businessId, saleId, attendance) {
+    if (!["pendiente", "asistio", "no_asistio"].includes(attendance)) {
+      return { ok: false, error: "Estado de asistencia inválido." };
+    }
+    const businesses = getBusinesses();
+    const business = businesses.find((b) => b.id === businessId);
+    const sale = business && (business.sales || []).find((v) => v.id === saleId && v.status === "completada");
+    if (!sale) return { ok: false, error: "No se encontró esa cita." };
+    sale.attendance = attendance;
+    saveBusinesses(businesses);
+    return { ok: true };
   }
 
   // ¿El cliente tuvo (o tiene) una reserva en este negocio? Requisito mínimo
@@ -1266,6 +1325,8 @@ const CupoStore = (() => {
     cancelReservation,
     updateBusiness,
     getSales,
+    setAttendance,
+    cancelHoursOf,
     startOfDay,
     addReview,
     hasReservationAt,

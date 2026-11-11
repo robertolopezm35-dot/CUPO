@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CUPO — Ventas</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -23,33 +27,123 @@
     <h1 class="dash-title">Ventas</h1>
     <a href="negocio.html" class="btn btn-outline btn-sm">← Mi agenda</a>
   </div>
-  <p class="dash-sub">Qué está vendiendo tu negocio, en tiempo real.</p>
+  <p class="dash-sub">Cómo va tu negocio: lo que ya atendiste, lo que viene y dónde se te están yendo cupos.</p>
 
-  <div class="period-tabs" id="periodTabs">
-    <button data-period="today" class="active">Hoy</button>
-    <button data-period="7">7 días</button>
-    <button data-period="30">30 días</button>
-    <button data-period="all">Todo</button>
+  <div class="period-bar">
+    <div class="period-tabs" id="periodTabs" role="tablist" aria-label="Período">
+      <button data-period="today" class="active" role="tab">Hoy</button>
+      <button data-period="7" role="tab">7 días</button>
+      <button data-period="30" role="tab">30 días</button>
+      <button data-period="all" role="tab">Todo</button>
+      <button data-period="custom" role="tab">📅 Rango</button>
+    </div>
+    <div class="range-inputs" id="rangeInputs" hidden>
+      <label>Del <input type="date" id="rangeFrom"></label>
+      <label>al <input type="date" id="rangeTo"></label>
+    </div>
+  </div>
+  <p class="period-caption" id="periodCaption"></p>
+
+  <div class="attention-banner" id="pendingBanner" hidden>
+    <span id="pendingText"></span>
+    <button class="btn btn-primary btn-sm" id="pendingReview">Revisar</button>
   </div>
 
   <div class="stat-row cols-4">
     <div class="stat-card">
       <div class="num" id="statTotal">$0</div>
-      <div class="lbl">Total de ventas</div>
+      <div class="lbl">Ingresos</div>
       <div class="trend" id="statTotalTrend"></div>
+    </div>
+    <div class="stat-card">
+      <div class="num" id="statCount">0</div>
+      <div class="lbl">Citas atendidas</div>
+      <div class="trend" id="statCountDetail"></div>
     </div>
     <div class="stat-card">
       <div class="num" id="statTicket">$0</div>
       <div class="lbl">Ticket promedio</div>
     </div>
     <div class="stat-card">
-      <div class="num" id="statCount">0</div>
-      <div class="lbl">Clientes atendidos</div>
+      <div class="num" id="statClients">0</div>
+      <div class="lbl">Clientes distintos</div>
+      <div class="trend" id="statClientsDetail"></div>
+    </div>
+  </div>
+
+  <div class="stat-row cols-4 secondary">
+    <div class="stat-card">
+      <div class="num" id="statUpcoming">$0</div>
+      <div class="lbl">Por venir</div>
+      <div class="trend" id="statUpcomingDetail"></div>
+    </div>
+    <div class="stat-card" id="statOccupancyCard">
+      <div class="num" id="statOccupancy">—</div>
+      <div class="lbl">Ocupación</div>
+      <div class="trend" id="statOccupancyDetail"></div>
+    </div>
+    <div class="stat-card" id="statNoShowCard">
+      <div class="num" id="statNoShow">0%</div>
+      <div class="lbl">No llegaron</div>
+      <div class="trend" id="statNoShowDetail"></div>
     </div>
     <div class="stat-card" id="statCancelCard">
       <div class="num" id="statCancelRate">0%</div>
-      <div class="lbl">Tasa de cancelación</div>
+      <div class="lbl">Cancelaciones</div>
       <div class="trend" id="statCancelDetail"></div>
+    </div>
+  </div>
+
+  <details class="how-calc">
+    <summary>¿Cómo se calculan estos números?</summary>
+    <p><strong>Ingresos</strong> = citas del período que ya pasaron y a las que no se marcó “No llegó”. <strong>Por venir</strong> = citas ya reservadas que aún no ocurren. Todo se agrupa por la <strong>hora de la cita</strong>, no por cuándo se reservó. <strong>Ocupación</strong> = cupos reservados entre los cupos que publicaste en el período. <strong>No llegaron</strong> = citas que marcaste “No llegó” entre las que ya pasaron. Marca “Llegó / No llegó” en el historial para que los números sean exactos.</p>
+  </details>
+
+  <div class="chart-card fill-card" id="fillCard">
+    <h3>💡 Cupos libres por llenar</h3>
+    <p class="chart-sub">Lo que todavía puedes vender (cupos publicados que aún no empiezan)</p>
+    <div id="fillInsight"></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Ingresos por día</h3>
+    <div id="dayChart"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="chart-card">
+      <h3>Qué días vendes más</h3>
+      <p class="chart-sub">Ingresos por día de la semana</p>
+      <div id="weekdayChart"></div>
+    </div>
+    <div class="chart-card">
+      <h3>Facturación por hora</h3>
+      <p class="chart-sub">A qué hora son tus citas</p>
+      <div id="hourChart"></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="chart-card">
+      <h3>Servicios más vendidos</h3>
+      <div id="serviceRank"></div>
+    </div>
+    <div class="chart-card" id="staffRankCard" hidden>
+      <h3>Ventas por colaborador</h3>
+      <div id="staffRank"></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="chart-card">
+      <h3>👥 Clientes nuevos y recurrentes</h3>
+      <p class="chart-sub">Recurrente = ya te había visitado antes del período</p>
+      <div id="clientMix"></div>
+    </div>
+    <div class="chart-card">
+      <h3>⭐ Tus mejores clientes</h3>
+      <p class="chart-sub">Por lo que han gastado en el período</p>
+      <div id="topClients"></div>
     </div>
   </div>
 
@@ -59,35 +153,32 @@
     <div id="discountInsight"></div>
   </div>
 
-  <div class="chart-card">
-    <h3>Ingresos por día</h3>
-    <div id="dayChart"></div>
-  </div>
-
-  <div class="chart-card">
-    <h3>Facturación por franja horaria</h3>
-    <p class="chart-sub">En qué horas del día vendes más</p>
-    <div id="hourChart"></div>
-  </div>
-
-  <div class="chart-card">
-    <h3>Servicios más vendidos</h3>
-    <div id="serviceRank"></div>
-  </div>
-
-  <div class="chart-card" id="staffRankCard" hidden>
-    <h3>Ventas por colaborador</h3>
-    <div id="staffRank"></div>
-  </div>
-
   <div style="margin-top:32px">
-    <h2 class="section-title" style="font-size:22px;text-align:left">Historial de ventas</h2>
+    <div class="hist-head">
+      <h2 class="section-title" style="font-size:22px;text-align:left;margin:0">Historial de citas</h2>
+      <button class="btn btn-outline btn-sm" id="exportCsv">⬇ Descargar CSV</button>
+    </div>
+    <div class="hist-controls">
+      <input type="search" id="histSearch" placeholder="Buscar cliente, servicio o folio" aria-label="Buscar en el historial">
+      <select id="histFilter" aria-label="Filtrar historial">
+        <option value="all">Todas</option>
+        <option value="confirmar">Por confirmar si llegó</option>
+        <option value="realizada">Realizadas</option>
+        <option value="porvenir">Por venir</option>
+        <option value="noshow">No llegaron</option>
+        <option value="cancelada">Canceladas</option>
+      </select>
+    </div>
     <div id="salesList"></div>
+    <div style="text-align:center;margin-top:12px"><button class="btn btn-outline btn-sm" id="histMore" hidden>Ver más</button></div>
   </div>
 </main>
 
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/schedule.js"></script>
+<script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CUPO — Panel del negocio</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -80,6 +84,7 @@
         <span id="dayBadge"></span>
       </div>
       <div id="dayNotices"></div>
+      <div id="dayAgenda"></div>
       <div id="daySlots"></div>
       <div class="day-actions" id="dayActions">
         <button type="button" class="btn btn-primary btn-sm" id="dayAddBtn">+ Agregar cupo</button>
@@ -136,6 +141,7 @@
     </div>
     <div class="modal-body">
       <p id="slotDetailBookedInfo" class="policy-note" hidden></p>
+      <div id="slotDetailContact" class="contact-row" hidden></div>
       <div id="slotDetailEditable">
         <p id="slotDetailScheduleNote" class="policy-note" hidden>Este cupo viene de tu horario semanal. Aquí puedes ponerle descuento, fijarle un servicio, agendar a alguien o quitarlo; su hora y persona se cambian en “Horario semanal”.</p>
 
@@ -143,6 +149,7 @@
           <label for="walkinName">¿Te llamaron o llegó alguien? Agéndalo tú</label>
           <div class="walkin-row">
             <input type="text" id="walkinName" placeholder="Nombre del cliente" maxlength="60">
+            <input type="tel" id="walkinPhone" placeholder="Teléfono (opcional)" maxlength="14" inputmode="numeric" autocomplete="off" aria-label="Teléfono del cliente, opcional">
             <select id="walkinService" hidden></select>
             <button type="button" class="btn btn-primary btn-sm" id="walkinBtn">Agendar</button>
           </div>
@@ -259,6 +266,23 @@
         <input type="text" id="editAddress">
       </div>
       <div class="field">
+        <label for="editPhone">Teléfono o WhatsApp del negocio (opcional)</label>
+        <input type="tel" id="editPhone" maxlength="14" inputmode="numeric" placeholder="10 dígitos, ej. 8112345678" autocomplete="tel-national">
+        <span class="field-hint">Tus clientes lo ven en “Mis reservas” para avisarte si llegan tarde o preguntar algo.</span>
+      </div>
+      <div class="field">
+        <label for="editCancelHours">Cancelación sin costo</label>
+        <select id="editCancelHours">
+          <option value="0">Hasta el momento de la cita</option>
+          <option value="1">Hasta 1 hora antes</option>
+          <option value="2">Hasta 2 horas antes</option>
+          <option value="4">Hasta 4 horas antes</option>
+          <option value="12">Hasta 12 horas antes</option>
+          <option value="24">Hasta 24 horas antes</option>
+        </select>
+        <span class="field-hint">Pasado ese límite, el cliente ya no puede cancelar desde la app y tendrá que contactarte.</span>
+      </div>
+      <div class="field">
         <label>Fotos (una URL por línea, opcional)</label>
         <textarea id="editPhotos" rows="3" placeholder="https://..."></textarea>
         <input type="file" id="editPhotoFile" accept="image/*" multiple style="margin-top:6px">
@@ -304,6 +328,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/schedule.js"></script>
+<script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

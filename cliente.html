@@ -3,7 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CUPO — Cupos disponibles</title>
+<title>CUPO — Cupos disponibles hoy en Monterrey</title>
+<meta name="description" content="Cupos de última hora en barberías, salones, spas, uñas, maquillaje y estética facial de Monterrey. Reserva al instante y paga en el negocio.">
+<link rel="canonical" href="https://mycupo.com/cliente.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CUPO">
+<meta property="og:title" content="Cupos disponibles hoy — CUPO">
+<meta property="og:description" content="Cupos libres en negocios de Monterrey. Reserva al instante y paga en el negocio.">
+<meta property="og:url" content="https://mycupo.com/cliente.html">
+<meta property="og:image" content="https://mycupo.com/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -11,10 +23,14 @@
 
 <header class="dash-header">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
-  <div class="dash-user">
+  <div class="dash-user" id="userBox">
     <span id="userName"></span>
     <div class="avatar" id="userAvatar"></div>
     <button class="btn btn-ghost btn-sm" id="logoutBtn">Salir</button>
+  </div>
+  <div class="dash-user" id="guestBox" hidden>
+    <a class="btn btn-ghost btn-sm" id="guestLogin" href="auth.html?mode=login&amp;role=cliente">Entrar</a>
+    <a class="btn btn-primary btn-sm" id="guestRegister" href="auth.html?mode=register&amp;role=cliente">Crear cuenta</a>
   </div>
 </header>
 
@@ -35,6 +51,11 @@
     <div class="search-row">
       <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
       <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn">♡ Solo favoritos</button>
+    </div>
+
+    <div class="search-row">
+      <button class="btn btn-outline btn-sm" id="soonOnlyBtn" aria-pressed="false">⚡ Próximas 2 horas</button>
+      <button class="btn btn-outline btn-sm" id="discountOnlyBtn" aria-pressed="false">🏷️ Con descuento</button>
     </div>
 
     <div class="search-row">
@@ -59,12 +80,18 @@
   </div>
 
   <div id="businessList"></div>
+  <div class="more-wrap"><button type="button" class="btn btn-outline" id="moreBusinessesBtn" hidden>Ver más negocios</button></div>
 
-  <div style="margin-top:40px">
+  <div style="margin-top:40px" id="reservationsSection">
     <h2 class="section-title" style="font-size:22px;text-align:left">Mis reservas</h2>
     <div id="reservationsList"></div>
   </div>
 </main>
+
+<footer>
+  <div class="footer-links"><a href="terminos.html">Términos y condiciones</a><a href="privacidad.html">Aviso de privacidad</a><a href="auth.html?mode=register&amp;role=negocio">Registra tu negocio</a></div>
+  &copy; 2026 CUPO · Monterrey, N.L. · Trabajo decente y crecimiento económico (ODS 8)
+</footer>
 
 <div class="modal-overlay" id="confirmModal">
   <div class="modal">
@@ -137,6 +164,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/schedule.js"></script>
+<script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

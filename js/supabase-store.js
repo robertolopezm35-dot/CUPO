@@ -80,7 +80,15 @@ const SupabaseStore = (() => {
   function mapSale(row) {
     return {
       id: row.id,
+      // date = cuándo se reservó; startsAt = la hora de la cita (el dashboard
+      // de Ventas agrupa por esta). En una base sin migrar no existe: Ventas
+      // la recupera de la hora del cupo (ver ventas.js, whenOf).
       date: new Date(row.created_at).getTime(),
+      startsAt: row.starts_at ? new Date(row.starts_at).getTime() : null,
+      duration: row.duration_minutes || null,
+      attendance: row.attendance || "pendiente",
+      clientPhone: row.client_phone || null,
+      clientCountry: row.client_country || null,
       service: row.service,
       price: Number(row.price),
       originalPrice: row.original_price != null ? Number(row.original_price) : null,
@@ -114,12 +122,17 @@ const SupabaseStore = (() => {
   // con un error críptico de Postgres.
   let scheduleSupported = false;
   let scheduleKnown = false;
+  // Lo mismo para db/migracion-ventas-agenda.sql (teléfono y política de cancelación).
+  let agendaSupported = false;
   const MIGRATION_MSG = "Falta un paso en Supabase para activar esta función: corre db/migracion-horario-semanal.sql en el SQL Editor.";
+  const AGENDA_MSG = "Falta un paso en Supabase para activar esta función: corre db/migracion-ventas-agenda.sql en el SQL Editor.";
   // Solo cuando el error es de verdad "falta algo de la migración" se manda a
   // correrla: un 42703 sobre OTRA columna (ej. sales.original_price) es otro
   // problema y mandar a correr el mismo archivo despistaría.
   function friendly(error) {
     const text = String(error.message || "");
+    if (["PGRST202", "42883"].includes(error.code) && /set_attendance|p_phone/.test(text)) return AGENDA_MSG;
+    if (["42703", "PGRST204"].includes(error.code) && /attendance|client_phone|client_country|cancel_hours|phone/.test(text)) return AGENDA_MSG;
     const missing = error.code === "PGRST202"
       || (["42703", "PGRST204"].includes(error.code) && /schedule|flexible|walkin|services/.test(text));
     return missing ? MIGRATION_MSG : text;
@@ -130,6 +143,7 @@ const SupabaseStore = (() => {
     const { data } = await client.from("businesses").select("*").limit(1);
     if (data && data.length) {
       scheduleSupported = data[0].schedule !== undefined;
+      agendaSupported = data[0].cancel_hours !== undefined;
       scheduleKnown = true;
     }
     return scheduleSupported;
@@ -137,6 +151,7 @@ const SupabaseStore = (() => {
 
   function mapBusiness(row, mySales) {
     scheduleSupported = row.schedule !== undefined;
+    agendaSupported = row.cancel_hours !== undefined;
     scheduleKnown = true;
     return {
       id: row.id,
@@ -147,6 +162,8 @@ const SupabaseStore = (() => {
       lng: row.lng,
       rating: Number(row.rating),
       photos: row.photos || [],
+      phone: row.phone || null,
+      cancelHours: row.cancel_hours != null ? row.cancel_hours : 1,
       servicesCatalog: row.services_catalog || [],
       staff: (row.staff || [])
         .slice()
@@ -304,7 +321,7 @@ const SupabaseStore = (() => {
       .select(`
         *,
         favorites(business_id),
-        reservations(id, slot_id, folio, slots(starts_at, price, duration_minutes, service, staff_id, staff(name), businesses(id, name)))
+        reservations(id, slot_id, folio, slots(starts_at, price, duration_minutes, service, staff_id, staff(name), businesses(id, name, address)))
       `)
       .eq("id", id)
       .single();
@@ -322,6 +339,8 @@ const SupabaseStore = (() => {
         businessName: r.slots.businesses.name,
         slotId: r.slot_id,
         label: labelFor(new Date(r.slots.starts_at)),
+        time: new Date(r.slots.starts_at).getTime(),
+        address: r.slots.businesses.address || "",
         price: Number(r.slots.price),
         service: r.slots.service || null,
         staffName: r.slots.staff ? r.slots.staff.name : null,
@@ -341,12 +360,16 @@ const SupabaseStore = (() => {
     return { ok: true, folio: data ? data.folio : null };
   }
 
-  async function bookSlotManual(businessId, slotId, { clientName, service } = {}) {
-    const { data, error } = await client.rpc("book_slot_manual", {
+  async function bookSlotManual(businessId, slotId, { clientName, service, phone } = {}) {
+    const args = {
       p_slot_id: slotId,
       p_client_name: clientName || "",
       p_service: service || null,
-    });
+    };
+    // Solo si lo mandan: una base sin migrar no conoce p_phone.
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (digits) args.p_phone = digits;
+    const { data, error } = await client.rpc("book_slot_manual", args);
     if (error) return { ok: false, error: friendly(error) };
     return { ok: true, folio: data || null };
   }
@@ -422,6 +445,12 @@ const SupabaseStore = (() => {
       .order("created_at", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapSale);
+  }
+
+  async function setAttendance(businessId, saleId, attendance) {
+    const { error } = await client.rpc("set_attendance", { p_sale_id: saleId, p_attendance: attendance });
+    if (error) return { ok: false, error: friendly(error) };
+    return { ok: true };
   }
 
   async function reopenSlot(businessId, slotId) {
@@ -570,10 +599,19 @@ const SupabaseStore = (() => {
     return { ok: true };
   }
 
-  async function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff }) {
+  async function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours }) {
     const patch = { name, category, address };
     if (servicesCatalog !== undefined) patch.services_catalog = servicesCatalog;
     if (photos !== undefined) patch.photos = photos;
+    if (phone !== undefined || cancelHours !== undefined) {
+      await ensureScheduleSupport();
+      if (agendaSupported) {
+        if (phone !== undefined) patch.phone = String(phone || "").replace(/\D/g, "") || null;
+        if (cancelHours !== undefined) patch.cancel_hours = Math.max(0, Math.min(72, parseInt(cancelHours, 10) || 0));
+      } else if (phone) {
+        return { ok: false, error: AGENDA_MSG };
+      }
+    }
     const { error } = await client.from("businesses").update(patch).eq("id", businessId);
     if (error) return { ok: false, error: error.message };
 
@@ -684,18 +722,19 @@ const SupabaseStore = (() => {
   async function checkSchema() {
     if (!client) throw new Error("Configura js/supabase-config.js primero.");
     const columns = {
-      sales: ["original_price", "discount_pct", "staff_name", "client_id", "folio"],
+      sales: ["original_price", "discount_pct", "staff_name", "client_id", "folio", "starts_at", "duration_minutes", "attendance", "client_phone", "client_country"],
       slots: ["original_price", "discount_pct", "staff_id", "schedule_key", "flexible"],
       reservations: ["folio", "walkin_name"],
       reviews: ["photo_url"],
       staff: ["services"],
-      businesses: ["photos", "services_catalog", "schedule"],
+      businesses: ["photos", "services_catalog", "schedule", "phone", "cancel_hours"],
       clients: ["last_favorites_check"],
     };
     const nobody = "00000000-0000-0000-0000-000000000000";
     const functions = {
       book_slot: { p_slot_id: nobody, p_service: null },
-      book_slot_manual: { p_slot_id: nobody, p_client_name: "x", p_service: null },
+      book_slot_manual: { p_slot_id: nobody, p_client_name: "x", p_service: null, p_phone: null },
+      set_attendance: { p_sale_id: nobody, p_attendance: "pendiente" },
       slot_service_price: { p_slot_id: nobody, p_service: null },
       cancel_reservation: { p_reservation_id: nobody },
       reopen_slot: { p_slot_id: nobody },
@@ -723,7 +762,7 @@ const SupabaseStore = (() => {
       missing,
       legacyPublicWalkinColumn: legacyColumn,
       hint: missing.length || legacyColumn
-        ? "Corre db/migracion-horario-semanal.sql completo en el SQL Editor de Supabase (es seguro repetirlo)."
+        ? "Corre completos, en este orden, db/migracion-horario-semanal.sql y db/migracion-ventas-agenda.sql en el SQL Editor de Supabase (son seguros de repetir)."
         : "La base está al día.",
     };
   }
@@ -809,6 +848,7 @@ const SupabaseStore = (() => {
     cancelReservation,
     updateBusiness,
     getSales,
+    setAttendance,
     hasReservationAt,
     addReview,
     getAverageRating,

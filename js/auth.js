@@ -48,6 +48,13 @@
     "negocio-login": { title: "Inicia sesión", sub: "Entra para gestionar la agenda de tu negocio.", toggleText: "¿No tienes cuenta?", toggleBtn: "Regístrate" },
   };
 
+  // Quien llega aquí porque tocó un cupo para reservarlo: se le dice que es
+  // un paso rápido y que regresa justo a ese cupo.
+  if (params.get("reason") === "reservar") {
+    copy["cliente-register"].sub = "Un paso más: crea tu cuenta y te regresamos a tu cupo para confirmar.";
+    copy["cliente-login"].sub = "Inicia sesión y te regresamos a tu cupo para confirmar.";
+  }
+
   function key() {
     return role + "-" + mode;
   }
