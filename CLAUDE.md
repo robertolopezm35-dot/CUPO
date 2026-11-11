@@ -36,12 +36,18 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   del proyecto de Supabase. Mientras estén vacíos, no pasa nada distinto.
 - `js/supabase-store.js` — `SupabaseStore`: el mismo catálogo de funciones que
   `CupoStore`, pero async y respaldado por Postgres real en vez de localStorage.
+- `js/schedule.js` — `CupoSchedule`: la lógica del horario semanal (qué cupos deben
+  existir según los turnos, cierres y citas ya hechas). No toca ni el DOM ni la base:
+  la usan igual `CupoStore` y `SupabaseStore` — ver "Horario semanal y calendario".
 - `js/data-adapter.js` — define `DataStore`, que apunta a `SupabaseStore` si
   `supabase-config.js` tiene credenciales, o a `CupoStore` si no. `auth.js`,
   `cliente.js` y `negocio.js` solo hablan con `DataStore`, nunca directo con
   `CupoStore`/`SupabaseStore` — por eso cambiar de backend no toca esos tres archivos.
 - `db/schema.sql` — el esquema completo de Postgres para Supabase (tablas, RLS,
   triggers, funciones RPC). Se corre una sola vez en el SQL Editor de Supabase.
+- `db/migracion-horario-semanal.sql` — lo que le falta a una base que ya tenía
+  `schema.sql` de antes para soportar el horario semanal (una instalación nueva no
+  la necesita: `schema.sql` ya lo trae). Idempotente.
 - `CNAME` — un archivo de una sola línea (`mycupo.com`) que le dice a GitHub Pages
   qué dominio propio debe servir — ver "Dominio propio: mycupo.com" abajo.
 - `favicon.svg` — ícono del navegador, el mismo círculo índigo con "C" del logo.
@@ -543,10 +549,114 @@ del negocio (nombre, catálogo, cupo de hoy con descuento y estilista, badge de
 escasez con 1 cupo disponible, badge de categoría, estado sin reseñas), y el botón
 "Cerrar" cierra el modal correctamente.
 
+## Horario semanal y calendario
+
+Antes el negocio publicaba cupo por cupo, a mano. Ahora define su semana una sola vez
+y los cupos se publican solos; el panel (`negocio.html`) pasó de una lista de cupos a
+un calendario.
+
+**Lo que hace el negocio**
+
+- **Horario semanal** (botón en su panel): una tarjeta por persona del equipo (más
+  "sin persona asignada" / "Mi negocio" si trabaja solo). En cada una: qué servicios
+  del catálogo hace esa persona (uno puede ser solo barbero y otro hacer los tres) y
+  sus turnos — días de la semana, de qué hora a qué hora, y cada cuánto es una cita.
+  Se pueden tener varios turnos (mañana y tarde con comida en medio, sábado más
+  corto) y copiar los turnos de otra persona. Necesita al menos un servicio con
+  precio en el catálogo (de ahí salen servicio y precio de cada cupo); "Editar
+  negocio" ahora puede sugerir los de la categoría y no deja guardar uno sin precio.
+- **Calendario mensual:** hoy resaltado, cuántas citas y cuántos cupos libres tiene
+  cada día, días cerrados (rojo), días que no se trabaja según el horario (rayado),
+  ausencias de una persona (ámbar). En celular quedan solo los números y colores.
+- **Panel del día** (al tocar un día): sus cupos agrupados por persona. Desde ahí se
+  agrega un cupo suelto, se cierra/reabre el día, y al tocar un cupo se le pone
+  descuento, se le fija un servicio, se quita, se **agenda a mano** a alguien que
+  llamó o llegó sin reservar (cuenta como venta), o se **cancela la cita**.
+- **Cerrar día:** todo el negocio o solo una persona, un día o varios seguidos
+  (vacaciones), con motivo opcional. Quita los cupos libres y deja de publicar; las
+  citas ya reservadas NO se cancelan solas (lo avisa y se cancelan una por una).
+
+**Decisiones de diseño**
+
+- **Cupos "flexibles":** un cupo del horario no trae servicio fijo — ofrece los del
+  catálogo que hace la persona asignada y el cliente elige al reservar (si solo hay
+  uno, reserva directo). Un solo cupo por persona y hora, en vez de uno por servicio
+  que se pisarían entre sí. El servicio y precio quedan fijos al reservar y el cupo
+  vuelve a ser flexible si se cancela. El descuento del cupo aplica al servicio que
+  se elija. La duración de la cita la define el turno ("una cita cada 45 min"), no
+  cada servicio.
+- **Qué se regenera y qué no** (`CupoSchedule.plan`): solo se crean/quitan cupos
+  *libres que salieron del horario*. Una cita reservada o un cupo publicado a mano
+  nunca se tocan — solo ocupan su lugar para que no se les encime otro. Un cupo del
+  horario quitado a mano no regresa (`schedule.skips`). Cambiar el horario respeta
+  las citas existentes.
+- **Se publican 4 semanas hacia adelante y quien las publica es el propio negocio**
+  al abrir su panel (y al guardar horario/cerrar día). En Supabase solo el dueño
+  puede insertar sus cupos (RLS), así que no hay un proceso de servidor: si un
+  negocio pasa más de ~3 semanas sin entrar, se le acaban los cupos publicados (ver
+  "Pendiente").
+- **El cliente ya no ve ni puede reservar cupos que ya empezaron** (antes un cupo de
+  las 3 pm seguía "disponible" a las 5). Para que la demo en localStorage no se
+  quede vacía por eso, los 48 negocios de ejemplo reponen unos cuantos cupos de
+  demostración cuando ya no les queda ninguno por delante (`refreshOnLoad` en
+  `js/store.js`) — antes solo tenían cupos el primer día que se abría la demo.
+- **Cancelar una cita desde el negocio** ahora marca la venta como cancelada y le
+  quita la reserva al cliente también en localStorage (antes solo lo hacía Supabase).
+
+**Datos:** `business.schedule = { rules, closures, skips }`, `staff.services`,
+y en cada cupo `scheduleKey` (de qué turno/día/hora salió), `flexible` y
+`walkinName` (agendado a mano). En Supabase: columnas `businesses.schedule`,
+`staff.services`, `slots.schedule_key`/`flexible`/`walkin_name` (con índice único
+por negocio + llave, para no publicar dos veces el mismo cupo), y funciones
+`slot_service_price` (servicio y precio de un cupo flexible, mismo redondeo que el
+navegador), `book_slot` (ahora recibe el servicio y rechaza cupos que ya
+empezaron), `book_slot_manual`, y `cancel_reservation`/`reopen_slot` actualizadas.
+
+**Acción pendiente tuya:** corre `db/migracion-horario-semanal.sql` completo una vez
+en el SQL Editor de Supabase (es idempotente y no borra nada). Mientras no se corra,
+el sitio sigue funcionando como antes: `supabase-store.js` detecta solo que faltan
+las columnas (`scheduleSupported`) y lo nuevo avisa qué paso falta en vez de fallar.
+
+**De paso:** `BUSINESS_SELECT` pedía las reseñas con una lista fija de columnas que
+no incluía `photo_url`, así que en el sitio real las fotos de reseñas se guardaban
+pero nunca se veían. Ahora pide `reviews(*)`/`staff(*)`.
+
+**Cómo se probó** (todo pasa):
+- Lógica del horario: pruebas unitarias en Node (encimes, cierres, cupos quitados,
+  cambio de turno con citas existentes, limpieza de lo ya pasado).
+- Playwright manejando la interfaz real, 88 verificaciones: catálogo y personal,
+  editor de horario, calendario, descuento, agendar a mano, cancelar, quitar cupos,
+  cerrar/reabrir (día, persona, rango), panel del cliente eligiendo servicio,
+  filtros, y el paso del tiempo.
+- El mismo recorrido contra un **Postgres 16 local** con el esquema de hoy + la
+  migración, usando el `supabase-js` y el `supabase-store.js` reales, con RLS y las
+  funciones corriendo de verdad. Lo único simulado ahí es la capa REST (un
+  sustituto propio de PostgREST, porque el entorno no dejó descargar el real) y el
+  login.
+- SQL directo con el rol y JWT de cada usuario: reglas de `book_slot`/
+  `book_slot_manual`, que un negocio no puede tocar lo de otro, y que el precio con
+  descuento coincide entre navegador y base en ~7,000 combinaciones.
+- El código nuevo sobre el esquema SIN migrar: todo lo anterior sigue funcionando.
+- Contra el Supabase real, solo lectura y sin sesión: su API acepta las consultas
+  nuevas (`staff(*)`, `reviews(*)`, cupos filtrados por rango de fechas).
+- **No se probó** escribir contra el Supabase real (necesita la migración corrida).
+
 ## Pendiente / decisiones abiertas
 
 **Del backlog ágil, lo que falta y necesita una acción tuya (cuenta/servicio externo
 que no se puede crear desde aquí) — pendiente a propósito para hacerlo juntos:**
+
+- **Correr `db/migracion-horario-semanal.sql` en Supabase** para activar el horario
+  semanal en el sitio real — ver "Horario semanal y calendario" arriba. Después
+  conviene una pasada en vivo (guardar un horario, reservar un cupo flexible,
+  agendar a mano, cerrar un día): es lo único de esa función sin probar contra el
+  proyecto real.
+- **Horario semanal sin depender de que el negocio entre:** hoy los cupos se
+  publican cuando el negocio abre su panel. Para que se renueven solos aunque no
+  entre en semanas hace falta un proceso del lado del servidor (ej. `pg_cron` en
+  Supabase, que se activa desde su dashboard).
+- La **demo de Artifact** (un solo archivo, ver "Enlaces") no incluye el horario
+  semanal ni el calendario: es una copia aparte que no se regenera sola.
 
 - **HU-08 — Pago dentro de la app:** hoy el cliente reserva gratis y paga en el
   negocio (política de cancelación de HU-13). Cobrar en línea necesita elegir y
