@@ -816,15 +816,30 @@ contra Postgres SIN ella, y 15 contra una base de dos migraciones atrás); 68 pr
 rol y JWT de cada usuario (que un negocio/cliente ajeno no pueda marcar asistencia ni ver
 ventas ajenas, validaciones de teléfono, límite de cancelación, columnas/funciones
 idénticas entre "instalación nueva" y "migrada"); y la auditoría de contraste/objetivos
-táctiles. **No se probó** contra el Supabase real (la migración aún no está corrida allí).
+táctiles.
+
+**Estado en vivo (11 nov 2026):** la migración ya está corrida en el Supabase real
+(`checkSchema` sin faltantes) y la pasada completa con escritura, con las cuentas de
+prueba marcadas (`prueba.*@cupo.mx`), pasó **107 de 107**. Lo nuevo que se confirmó contra
+la base real: teléfono y política de cancelación del negocio (y que la base rechaza un
+teléfono de 3 dígitos o `cancel_hours` fuera de 0–72); la venta guarda la hora de la
+cita, la duración, la asistencia y el teléfono del cliente; marcar "No llegó" y deshacerlo;
+**un negocio ajeno, un cliente y un anónimo no pueden marcar asistencia ni ver ventas ni
+teléfonos**; ni el propio negocio puede editar `sales` directo; con límite de 72 h el
+cliente ya no puede cancelar (la app oculta el botón y la base lo rechaza) y con 1 h sí;
+agendar a mano con teléfono (y que ese teléfono no aparece en la tabla pública `slots`);
+y que la agenda del día y Ventas cargan con datos reales. El guion de la prueba vive fuera
+del repo; ojo, las **ventas no se pueden borrar desde un negocio** (RLS solo deja leer),
+así que las de las corridas de prueba se quedan hasta que se borren las cuentas con el SQL
+de abajo ("Borrar las cuentas de prueba").
 
 ## Pendiente / decisiones abiertas
 
 **Nuevo (11 nov 2026) — necesita algo tuyo:**
 
-- **Correr `db/migracion-ventas-agenda.sql`** en Supabase (ver sección anterior). Después
-  conviene repetir la pasada en vivo con las cuentas de prueba (asistencia, teléfono,
-  política de cancelación contra el proyecto real).
+- ~~Correr `db/migracion-ventas-agenda.sql` en Supabase~~ — **hecho** (11 nov 2026):
+  `checkSchema()` responde "La base está al día" y la pasada en vivo con escritura pasó
+  107 de 107 (ver "Estado en vivo" en la sección de investigación).
 - **Correo de contacto:** ponlo en `js/site-config.js` (`contactEmail`) para que el aviso de
   privacidad lo muestre; hoy dice que "se publicará". También hace falta decidir quién es
   el responsable legal (persona o empresa) y su domicilio, y que **un abogado revise**
