@@ -51,6 +51,7 @@ const SupabaseStore = (() => {
     const date = new Date(row.starts_at);
     const reservation = Array.isArray(row.reservations) ? row.reservations[0] : row.reservations;
     const client = reservation && reservation.clients;
+    const walkin = (reservation && reservation.walkin_name) || row.walkin_name || null;
     return {
       id: row.id,
       time: date.getTime(),
@@ -66,8 +67,11 @@ const SupabaseStore = (() => {
       status: row.status,
       reservationId: reservation ? reservation.id : null,
       clientId: reservation ? reservation.client_id : null,
-      clientName: client ? client.first_name + " " + client.last_name : (row.walkin_name || null),
-      walkinName: row.walkin_name || null,
+      // Agendado a mano por el negocio: el nombre vive en la reserva (solo la
+      // ve el negocio dueño). row.walkin_name cubre una base que aún tiene la
+      // columna vieja en slots (antes de correr la migración actualizada).
+      clientName: client ? client.first_name + " " + client.last_name : walkin || null,
+      walkinName: walkin || null,
       scheduleKey: row.schedule_key || null,
       flexible: !!row.flexible,
     };
@@ -109,14 +113,31 @@ const SupabaseStore = (() => {
   // sigue funcionando igual y lo nuevo avisa qué paso falta en vez de fallar
   // con un error críptico de Postgres.
   let scheduleSupported = false;
+  let scheduleKnown = false;
   const MIGRATION_MSG = "Falta un paso en Supabase para activar esta función: corre db/migracion-horario-semanal.sql en el SQL Editor.";
+  // Solo cuando el error es de verdad "falta algo de la migración" se manda a
+  // correrla: un 42703 sobre OTRA columna (ej. sales.original_price) es otro
+  // problema y mandar a correr el mismo archivo despistaría.
   function friendly(error) {
-    const missing = ["PGRST202", "PGRST204", "42703", "42883"].includes(error.code);
-    return missing ? MIGRATION_MSG : error.message;
+    const text = String(error.message || "");
+    const missing = error.code === "PGRST202"
+      || (["42703", "PGRST204"].includes(error.code) && /schedule|flexible|walkin|services/.test(text));
+    return missing ? MIGRATION_MSG : text;
+  }
+
+  async function ensureScheduleSupport() {
+    if (scheduleKnown) return scheduleSupported;
+    const { data } = await client.from("businesses").select("*").limit(1);
+    if (data && data.length) {
+      scheduleSupported = data[0].schedule !== undefined;
+      scheduleKnown = true;
+    }
+    return scheduleSupported;
   }
 
   function mapBusiness(row, mySales) {
     scheduleSupported = row.schedule !== undefined;
+    scheduleKnown = true;
     return {
       id: row.id,
       name: row.name,
@@ -150,7 +171,7 @@ const SupabaseStore = (() => {
     *,
     staff(*),
     reviews(*),
-    slots(*, staff(name), reservations(id, client_id, clients(first_name, last_name)))
+    slots(*, staff(name), reservations(*, clients(first_name, last_name)))
   `;
 
   async function getMySales() {
@@ -331,6 +352,7 @@ const SupabaseStore = (() => {
   }
 
   async function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId, flexible }) {
+    await ensureScheduleSupport();
     const offset = parseInt(dayOffset, 10) || 0;
     const startsAt = new Date(Date.now() + offset * 86400000);
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
@@ -347,15 +369,16 @@ const SupabaseStore = (() => {
       service: service || null,
       staff_id: staffId || null,
     };
-    if (scheduleSupported) Object.assign(row, flexibleFields(flexible, basePrice));
+    if (scheduleSupported) Object.assign(row, flexibleFields(flexible, finalPrice));
     const { error } = await client.from("slots").insert(row);
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   }
 
   // Un cupo flexible no guarda servicio ni precio original: el precio que
-  // queda en la fila es solo el "desde" (lo calcula quien llama, que ya
-  // tiene el catálogo cargado); el real se fija en book_slot al reservar.
+  // queda en la fila es solo el "desde" ya con el descuento del cupo (lo
+  // calcula quien llama, que ya tiene el catálogo cargado); el real se fija
+  // en book_slot al reservar.
   function flexibleFields(flexible, fromPrice) {
     return flexible
       ? { flexible: true, service: null, original_price: null, price: fromPrice }
@@ -363,6 +386,7 @@ const SupabaseStore = (() => {
   }
 
   async function updateSlot(businessId, slotId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId, flexible }) {
+    await ensureScheduleSupport();
     const offset = parseInt(dayOffset, 10) || 0;
     const startsAt = new Date(Date.now() + offset * 86400000);
     startsAt.setHours(parseInt(hour, 10), parseInt(minute, 10) || 0, 0, 0);
@@ -378,7 +402,7 @@ const SupabaseStore = (() => {
       service: service || null,
       staff_id: staffId || null,
     };
-    if (scheduleSupported) Object.assign(patch, flexibleFields(flexible, basePrice));
+    if (scheduleSupported) Object.assign(patch, flexibleFields(flexible, finalPrice));
     const { data, error } = await client
       .from("slots")
       .update(patch)
@@ -403,7 +427,7 @@ const SupabaseStore = (() => {
   async function reopenSlot(businessId, slotId) {
     const { error } = await client.rpc("reopen_slot", { p_slot_id: slotId });
     if (error) return { ok: false, error: error.message };
-    if (scheduleSupported) {
+    if (await ensureScheduleSupport()) {
       // Si ese día ya está cerrado, el cupo liberado no debe quedar
       // reservable: se quita (igual que freeSlot en store.js).
       const [{ data: slot }, schedule] = await Promise.all([
@@ -448,7 +472,7 @@ const SupabaseStore = (() => {
   }
 
   async function saveSchedule(businessId, { rules, staffServices } = {}) {
-    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    if (!(await ensureScheduleSupport())) return { ok: false, error: MIGRATION_MSG };
     const cleaned = CupoSchedule.normalize({ rules }).rules;
     if (cleaned.length !== (rules || []).length) {
       return { ok: false, error: "Revisa los turnos: hay alguno incompleto." };
@@ -467,7 +491,7 @@ const SupabaseStore = (() => {
   // quita los que sobren. Solo lo puede hacer el propio negocio (RLS), así
   // que corre cada vez que abre su panel — ver CLAUDE.md "Horario semanal".
   async function syncSchedule(businessId) {
-    if (!scheduleSupported) return { ok: true, created: 0, removed: 0 };
+    if (!(await ensureScheduleSupport())) return { ok: true, created: 0, removed: 0 };
     const business = await getBusinessById(businessId);
     if (!business) return { ok: false, error: "Negocio no encontrado." };
     const { toCreate, toRemove } = CupoSchedule.plan(business, Date.now());
@@ -500,7 +524,7 @@ const SupabaseStore = (() => {
   }
 
   async function closeDay(businessId, { date, dateTo, staffId, reason } = {}) {
-    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    if (!(await ensureScheduleSupport())) return { ok: false, error: MIGRATION_MSG };
     if (!date || date < CupoSchedule.dateKey(Date.now())) return { ok: false, error: "No puedes cerrar un día que ya pasó." };
     const who = staffId || null;
     const dates = CupoSchedule.dateRange(date, dateTo);
@@ -529,7 +553,7 @@ const SupabaseStore = (() => {
   }
 
   async function reopenDay(businessId, { date, staffId } = {}) {
-    if (!scheduleSupported) return { ok: false, error: MIGRATION_MSG };
+    if (!(await ensureScheduleSupport())) return { ok: false, error: MIGRATION_MSG };
     const who = staffId || null;
     const saved = await mutateSchedule(businessId, (schedule) => {
       schedule.closures = schedule.closures.filter((c) => !(c.date === date && c.staffId === who));

@@ -88,9 +88,6 @@ create table public.slots (
   -- Cupo flexible: no trae servicio fijo, el cliente lo elige al reservar
   -- entre los que hace la persona asignada (ver slot_service_price()).
   flexible boolean not null default false,
-  -- Nombre de quien ocupa el cupo cuando lo agendó el propio negocio (una
-  -- llamada, alguien que llegó sin reservar): no hay fila en reservations.
-  walkin_name text,
   created_at timestamptz not null default now()
 );
 
@@ -102,10 +99,15 @@ create unique index slots_business_schedule_key_idx on public.slots (business_id
 create table public.reservations (
   id uuid primary key default gen_random_uuid(),
   slot_id uuid not null unique references public.slots (id) on delete cascade,
-  client_id uuid not null references public.clients (id) on delete cascade,
+  -- null cuando lo agendó el propio negocio a mano (una llamada, alguien que
+  -- llegó sin reservar): entonces el nombre va en walkin_name. Va aquí y no en
+  -- slots porque slots es pública y reservations solo la ve el negocio dueño.
+  client_id uuid references public.clients (id) on delete cascade,
+  walkin_name text,
   -- Folio de confirmación (HU-05), generado por book_slot() al reservar.
   folio text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint reservations_who_check check (client_id is not null or walkin_name is not null)
 );
 
 create index reservations_client_id_idx on public.reservations (client_id);
@@ -444,7 +446,7 @@ begin
   end if;
 
   update public.slots
-  set status = 'booked', walkin_name = v_name
+  set status = 'booked'
   where id = p_slot_id and status = 'available' and business_id = auth.uid()
   returning * into v_slot;
 
@@ -467,6 +469,9 @@ begin
   end if;
 
   v_folio := public.generate_folio();
+
+  insert into public.reservations (slot_id, client_id, walkin_name, folio)
+  values (p_slot_id, null, v_name, v_folio);
 
   insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status, original_price, discount_pct, staff_name)
   values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_name, null, v_folio, 'completada', v_slot.original_price, v_slot.discount_pct, v_staff_name);
@@ -523,7 +528,6 @@ begin
   update public.slots
   set status = 'available',
       created_at = now(),
-      walkin_name = null,
       service = case when flexible then null else service end,
       original_price = case when flexible then null else original_price end
   where id = p_slot_id;

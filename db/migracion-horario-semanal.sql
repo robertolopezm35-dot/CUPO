@@ -6,6 +6,15 @@
 -- Cómo usarla: Supabase → SQL Editor → New query → pega TODO este archivo →
 -- Run. Es seguro volver a correrla: no borra ni cambia ningún dato existente.
 
+-- ── Puesta al día de la ronda "Dashboard de Ventas" ────────────────────────
+-- book_slot() (más abajo) guarda en cada venta el descuento y la persona. Si
+-- tu base nunca corrió el SQL de esa ronda, estas 3 columnas no existen y NO
+-- se podría reservar nada. Es seguro correrlo aunque ya existan.
+alter table public.sales
+  add column if not exists original_price numeric(10, 2),
+  add column if not exists discount_pct int not null default 0,
+  add column if not exists staff_name text;
+
 -- ── Columnas nuevas ────────────────────────────────────────────────────────
 alter table public.businesses
   add column if not exists schedule jsonb not null default '{}'::jsonb;
@@ -15,8 +24,33 @@ alter table public.staff
 
 alter table public.slots
   add column if not exists schedule_key text,
-  add column if not exists flexible boolean not null default false,
-  add column if not exists walkin_name text;
+  add column if not exists flexible boolean not null default false;
+
+-- Quien agenda el negocio a mano (una llamada, alguien que llegó sin reservar)
+-- no tiene cuenta: su nombre va en una reserva SIN cliente. Antes se guardaba
+-- en slots.walkin_name, pero la tabla slots es pública (se navega sin sesión)
+-- y cualquiera podía leer ese nombre; reservations solo la ve el negocio dueño.
+alter table public.reservations alter column client_id drop not null;
+alter table public.reservations add column if not exists walkin_name text;
+alter table public.reservations drop constraint if exists reservations_who_check;
+alter table public.reservations
+  add constraint reservations_who_check check (client_id is not null or walkin_name is not null);
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'slots' and column_name = 'walkin_name') then
+    insert into public.reservations (slot_id, client_id, walkin_name, folio)
+    select s.id, null, s.walkin_name,
+           (select sa.folio from public.sales sa
+            where sa.slot_id = s.id and sa.status = 'completada'
+            order by sa.created_at desc limit 1)
+    from public.slots s
+    where s.walkin_name is not null and s.status = 'booked'
+      and not exists (select 1 from public.reservations r where r.slot_id = s.id);
+    alter table public.slots drop column walkin_name;
+  end if;
+end $$;
 
 create unique index if not exists slots_business_schedule_key_idx
   on public.slots (business_id, schedule_key);
@@ -158,7 +192,7 @@ begin
   end if;
 
   update public.slots
-  set status = 'booked', walkin_name = v_name
+  set status = 'booked'
   where id = p_slot_id and status = 'available' and business_id = auth.uid()
   returning * into v_slot;
 
@@ -181,6 +215,9 @@ begin
   end if;
 
   v_folio := public.generate_folio();
+
+  insert into public.reservations (slot_id, client_id, walkin_name, folio)
+  values (p_slot_id, null, v_name, v_folio);
 
   insert into public.sales (business_id, slot_id, service, price, client_name, client_id, folio, status, original_price, discount_pct, staff_name)
   values (v_slot.business_id, v_slot.id, v_slot.service, v_slot.price, v_name, null, v_folio, 'completada', v_slot.original_price, v_slot.discount_pct, v_staff_name);
@@ -237,7 +274,6 @@ begin
   update public.slots
   set status = 'available',
       created_at = now(),
-      walkin_name = null,
       service = case when flexible then null else service end,
       original_price = case when flexible then null else original_price end
   where id = p_slot_id;
