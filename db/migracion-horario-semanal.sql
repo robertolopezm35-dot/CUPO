@@ -6,6 +6,18 @@
 -- Cómo usarla: Supabase → SQL Editor → New query → pega TODO este archivo →
 -- Run. Es seguro volver a correrla: no borra ni cambia ningún dato existente.
 
+-- ── Guarda: no correr esta migración si la base ya es más nueva ────────────
+-- Esta migración (la más vieja) redefine funciones como book_slot/cancel_reservation. Si
+-- tu base ya corrió db/migracion-ventas-agenda.sql, volver a correr ESTA revertiría esas
+-- funciones (se perdería la hora de la cita, el teléfono y el límite de cancelación).
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'sales' and column_name = 'attendance') then
+    raise exception 'Esta migración ya fue superada: tu base ya tiene db/migracion-ventas-agenda.sql. No hace falta correrla otra vez (revertiría funciones). Para ponerla al día corre, en este orden, db/migracion-ventas-agenda.sql y db/migracion-endurecimiento.sql.';
+  end if;
+end $$;
+
 -- ── Puesta al día de la ronda "Dashboard de Ventas" ────────────────────────
 -- book_slot() (más abajo) guarda en cada venta el descuento y la persona. Si
 -- tu base nunca corrió el SQL de esa ronda, estas 3 columnas no existen y NO

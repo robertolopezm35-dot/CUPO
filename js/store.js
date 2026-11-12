@@ -358,6 +358,8 @@ const CupoStore = (() => {
     const minute = Math.random() < 0.5 ? 0 : 30;
     const d = new Date(Date.now() - dayOffset * 86400000);
     d.setHours(hour, minute, 0, 0);
+    // Hoy a las 7 pm no puede ser "una cita pasada" si todavía son las 2 pm.
+    if (d.getTime() >= Date.now()) d.setTime(d.getTime() - 86400000);
     return d.getTime();
   }
 
@@ -572,7 +574,7 @@ const CupoStore = (() => {
       } else if (untouched && /^b\d+$/.test(b.id) && !(b.slots || []).some((s) => s.status === "available" && s.time > now)) {
         const h = new Date(now).getHours();
         const offset = h >= 19 ? 1 : 0;
-        const firstHour = offset ? 10 + (parseInt(b.id.slice(1), 10) % 5) : h + 1;
+        const firstHour = offset ? 10 + (parseInt(b.id.slice(1), 10) % 5) : Math.max(8, h + 1);
         const base = b.servicesCatalog && b.servicesCatalog[0] ? b.servicesCatalog[0].price : 200;
         const services = SERVICES_BY_CATEGORY[b.category] || [];
         for (let i = 0; i < 3 && firstHour + i <= 20; i++) {
@@ -653,8 +655,23 @@ const CupoStore = (() => {
     }
   }
 
+  // Un valor corrupto en localStorage (JSON cortado, editado a mano, de una versión vieja) ya
+  // no revienta toda la página: se lee como "vacío" y se avisa en la consola.
+  function readJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw == null || raw === "") return fallback;
+      const value = JSON.parse(raw);
+      return value == null ? fallback : value;
+    } catch (err) {
+      console.error("localStorage corrupto en " + key + ":", err);
+      return fallback;
+    }
+  }
+
   function getBusinesses() {
-    return JSON.parse(localStorage.getItem(KEYS.businesses) || "[]");
+    const list = readJson(KEYS.businesses, []);
+    return Array.isArray(list) ? list : [];
   }
 
   function saveBusinesses(list) {
@@ -662,7 +679,14 @@ const CupoStore = (() => {
   }
 
   function getClients() {
-    return JSON.parse(localStorage.getItem(KEYS.clients) || "[]");
+    const list = readJson(KEYS.clients, []);
+    if (!Array.isArray(list)) return [];
+    // Cuentas de versiones viejas pueden no traer estas listas.
+    return list.map((c) => ({
+      ...c,
+      reservations: Array.isArray(c.reservations) ? c.reservations : [],
+      favoriteBusinessIds: Array.isArray(c.favoriteBusinessIds) ? c.favoriteBusinessIds : [],
+    }));
   }
 
   function saveClients(list) {
@@ -670,7 +694,8 @@ const CupoStore = (() => {
   }
 
   function getSession() {
-    return JSON.parse(localStorage.getItem(KEYS.session) || "null");
+    const session = readJson(KEYS.session, null);
+    return session && typeof session === "object" ? session : null;
   }
 
   function setSession(session) {
@@ -724,6 +749,10 @@ const CupoStore = (() => {
     if (!/^\d{10}$/.test(phone)) {
       return { ok: false, error: "El teléfono debe tener 10 dígitos." };
     }
+    const names = CupoValidate.personName(firstName, lastName);
+    if (!names.ok) return names;
+    firstName = names.first;
+    lastName = names.last;
     const client = {
       id: "c" + Math.random().toString(36).slice(2, 9),
       firstName,
@@ -747,6 +776,10 @@ const CupoStore = (() => {
     if (businesses.some((b) => b.email.toLowerCase() === email.toLowerCase())) {
       return { ok: false, error: "Ya existe un negocio registrado con ese correo." };
     }
+    const text = CupoValidate.businessText(name, address);
+    if (!text.ok) return text;
+    name = text.name;
+    address = text.address;
     const business = {
       id: "b" + Math.random().toString(36).slice(2, 9),
       name,
@@ -810,7 +843,10 @@ const CupoStore = (() => {
     });
   }
 
-  function bookSlot(businessId, slotId, client, { service } = {}) {
+  // Mismas reglas que book_slot en la base: máximo 3 citas próximas por cliente y sin citas encimadas.
+  const MAX_ACTIVE_RESERVATIONS = 3;
+
+  function bookSlot(businessId, slotId, client, { service, expectedPrice } = {}) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false, error: "Negocio no encontrado." };
@@ -818,19 +854,33 @@ const CupoStore = (() => {
     if (!slot || slot.status !== "available" || slot.time <= Date.now()) {
       return { ok: false, error: "Ese cupo ya no está disponible." };
     }
+    const stored = getClients().find((c) => c.id === client.id);
+    if (!stored) return { ok: false, error: "Solo un cliente puede reservar un cupo." };
+    const now = Date.now();
+    const active = stored.reservations.filter((r) => r.time && r.time > now);
+    if (active.length >= MAX_ACTIVE_RESERVATIONS) {
+      return { ok: false, error: "Ya tienes " + MAX_ACTIVE_RESERVATIONS + " citas próximas. Cancela una o espera a que pase para reservar otra." };
+    }
+    const slotEnd = slot.time + (slot.duration || 45) * 60000;
+    if (active.some((r) => r.time < slotEnd && r.time + (r.duration || 45) * 60000 > slot.time)) {
+      return { ok: false, error: "Ya tienes otra cita en ese horario." };
+    }
     const resolved = resolveService(business, slot, service);
     if (!resolved.ok) return resolved;
+    if (expectedPrice != null && Number.isFinite(Number(expectedPrice)) && Math.round(slot.price) !== Math.round(Number(expectedPrice))) {
+      return { ok: false, error: "El precio cambió a $" + Math.round(slot.price) + ". Revisa y confirma de nuevo." };
+    }
     const folio = generateFolio();
+    slot.folio = folio;
     slot.status = "booked";
     slot.clientId = client.id;
     slot.clientName = client.name;
-    const stored = getClients().find((c) => c.id === client.id);
     recordSale(business, slot, {
       clientName: client.name,
       clientId: client.id,
       folio,
-      clientPhone: stored ? stored.phone : null,
-      clientCountry: stored ? stored.countryCode : null,
+      clientPhone: stored.phone,
+      clientCountry: stored.countryCode,
     });
     saveBusinesses(businesses);
 
@@ -860,8 +910,10 @@ const CupoStore = (() => {
   function bookSlotManual(businessId, slotId, { clientName, service, phone } = {}) {
     const name = (clientName || "").trim();
     if (!name) return { ok: false, error: "Escribe el nombre del cliente." };
-    const digits = String(phone || "").replace(/\D/g, "");
-    if (digits && digits.length !== 10) return { ok: false, error: "El teléfono debe tener 10 dígitos." };
+    const ph = CupoValidate.phone(phone);
+    if (!ph.ok) return ph;
+    const digits = ph.phone;
+    if (name.length > CupoValidate.LIMITS.personName) return { ok: false, error: "El nombre del cliente es demasiado largo (máximo " + CupoValidate.LIMITS.personName + " caracteres)." };
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false, error: "Negocio no encontrado." };
@@ -876,31 +928,47 @@ const CupoStore = (() => {
     slot.clientId = null;
     slot.clientName = name;
     slot.walkinName = name;
+    slot.folio = folio;
     recordSale(business, slot, { clientName: name, clientId: null, folio, clientPhone: digits || null, clientCountry: digits ? "+52" : null });
     saveBusinesses(businesses);
     return { ok: true, folio };
   }
 
+  const PAST_MSG = "Esa hora ya pasó. Elige una hora que todavía no empiece.";
+  const CONFLICT_MSG = "Ya hay un cupo o una cita en ese horario para esa persona. Elige otra hora.";
+
+  function slotRows(business) {
+    return (business.slots || []).map((s) => ({ id: s.id, time: s.time, duration: s.duration, staffId: s.staffId || null }));
+  }
+
   function addSlot(businessId, { hour, minute, duration, price, service, dayOffset, discountPct, staffId, flexible }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
-    if (!business) return { ok: false };
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
+    const input = CupoValidate.slotInput({ duration, price, discountPct, flexible });
+    if (!input.ok) return input;
     const h = parseInt(hour, 10);
     const m = parseInt(minute, 10) || 0;
     const displayH = h % 12 === 0 ? 12 : h % 12;
     const ampm = h >= 12 ? "PM" : "AM";
     const label = displayH + ":" + String(m).padStart(2, "0") + " " + ampm;
     const offset = parseInt(dayOffset, 10) || 0;
-    const basePrice = parseInt(price, 10) || 0;
-    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
-    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
-    const staff = (business.staff || []).find((st) => st.id === staffId) || null;
+    const when = dateAt(offset, h, m);
+    if (!(when > Date.now())) return { ok: false, error: PAST_MSG };
+    const staffForRow = (business.staff || []).find((st) => st.id === staffId) || null;
+    if (CupoValidate.slotConflict(slotRows(business), when, input.duration, staffForRow ? staffForRow.id : null, null)) {
+      return { ok: false, error: CONFLICT_MSG };
+    }
+    const basePrice = input.price;
+    const pct = input.pct;
+    const finalPrice = pct > 0 ? CupoSchedule.applyDiscount(basePrice, pct) : basePrice;
+    const staff = staffForRow;
     const slot = {
       id: "s" + Math.random().toString(36).slice(2, 9),
-      time: dateAt(offset, h, m),
+      time: when,
       createdAt: Date.now(),
       label,
-      duration: parseInt(duration, 10) || 45,
+      duration: input.duration,
       price: finalPrice,
       originalPrice: pct > 0 ? basePrice : null,
       discountPct: pct,
@@ -916,7 +984,8 @@ const CupoStore = (() => {
     if (slot.flexible) makeFlexible(business, slot);
     business.slots.push(slot);
     business.slots.sort((a, b) => a.time - b.time);
-    saveBusinesses(businesses);
+    const saveError = trySave(businesses);
+    if (saveError) return { ok: false, error: saveError };
     return { ok: true };
   }
 
@@ -936,18 +1005,25 @@ const CupoStore = (() => {
     if (slot.status !== "available") {
       return { ok: false, error: "No puedes editar un cupo ya reservado. Reábrelo primero." };
     }
+    const input = CupoValidate.slotInput({ duration, price, discountPct, flexible });
+    if (!input.ok) return input;
     const h = parseInt(hour, 10);
     const m = parseInt(minute, 10) || 0;
     const displayH = h % 12 === 0 ? 12 : h % 12;
     const ampm = h >= 12 ? "PM" : "AM";
     const offset = parseInt(dayOffset, 10) || 0;
-    const basePrice = parseInt(price, 10) || 0;
-    const pct = Math.max(0, Math.min(90, parseInt(discountPct, 10) || 0));
-    const finalPrice = pct > 0 ? Math.round((basePrice * (1 - pct / 100)) / 5) * 5 : basePrice;
+    const when = dateAt(offset, h, m);
+    if (!(when > Date.now())) return { ok: false, error: PAST_MSG };
     const staff = (business.staff || []).find((st) => st.id === staffId) || null;
-    slot.time = dateAt(offset, h, m);
+    if (CupoValidate.slotConflict(slotRows(business), when, input.duration, staff ? staff.id : null, slotId)) {
+      return { ok: false, error: CONFLICT_MSG };
+    }
+    const basePrice = input.price;
+    const pct = input.pct;
+    const finalPrice = pct > 0 ? CupoSchedule.applyDiscount(basePrice, pct) : basePrice;
+    slot.time = when;
     slot.label = displayH + ":" + String(m).padStart(2, "0") + " " + ampm;
-    slot.duration = parseInt(duration, 10) || 45;
+    slot.duration = input.duration;
     slot.price = finalPrice;
     slot.originalPrice = pct > 0 ? basePrice : null;
     slot.discountPct = pct;
@@ -970,6 +1046,7 @@ const CupoStore = (() => {
     slot.clientId = null;
     slot.clientName = null;
     slot.walkinName = null;
+    slot.folio = null;
     if (slot.flexible) makeFlexible(business, slot);
     const sale = (business.sales || [])
       .filter((v) => v.slotId === slot.id && v.status === "completada")
@@ -979,12 +1056,17 @@ const CupoStore = (() => {
     if (closed) business.slots = business.slots.filter((s) => s.id !== slot.id);
   }
 
-  function reopenSlot(businessId, slotId) {
+  // expectedFolio: el folio de la cita que el negocio veía en pantalla; si el cupo ya tiene
+  // otra (la cancelaron y alguien más reservó), se rechaza en vez de cancelar la equivocada.
+  function reopenSlot(businessId, slotId, { expectedFolio } = {}) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
-    if (!business) return { ok: false };
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
     const slot = business.slots.find((s) => s.id === slotId);
-    if (!slot) return { ok: false };
+    if (!slot) return { ok: false, error: "Ese cupo ya no existe. Actualiza la pantalla." };
+    if (expectedFolio && slot.folio !== expectedFolio) {
+      return { ok: false, error: "Esa cita ya cambió: actualiza la pantalla para ver lo más reciente." };
+    }
     freeSlot(business, slot);
     slot.createdAt = Date.now();
     saveBusinesses(businesses);
@@ -1005,9 +1087,13 @@ const CupoStore = (() => {
   function removeSlot(businessId, slotId) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
-    if (!business) return { ok: false };
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
     const slot = business.slots.find((s) => s.id === slotId);
-    if (slot && slot.scheduleKey) {
+    if (!slot) return { ok: false, error: "Ese cupo ya no existe. Actualiza la pantalla." };
+    if (slot.status !== "available") {
+      return { ok: false, error: "Ese cupo ya se reservó, así que no se puede quitar. Actualiza la pantalla (si quieres, cancela la cita)." };
+    }
+    if (slot.scheduleKey) {
       // Quitado a mano: se anota para que el horario semanal no lo vuelva
       // a publicar la próxima vez que se sincronice.
       const schedule = CupoSchedule.normalize(business.schedule);
@@ -1101,9 +1187,14 @@ const CupoStore = (() => {
       if (slot && Date.now() > slot.time - hours * 3600000) {
         return { ok: false, error: "Ya no se puede cancelar desde la app (faltan menos de " + hours + " h para tu cita). Contacta al negocio." };
       }
-      if (slot) {
+      // Solo quien tiene la reserva puede cancelarla: una pestaña vieja ya no puede liberar la
+      // cita de OTRA persona que reservó el mismo cupo después.
+      if (slot && slot.status === "booked" && slot.clientId !== clientId) {
+        return { ok: false, error: "Esa reserva ya no es tuya (otra persona reservó ese cupo). Actualiza la pantalla." };
+      }
+      if (slot && slot.status === "booked") {
         freeSlot(business, slot);
-      } else {
+      } else if (!slot) {
         const sale = (business.sales || [])
           .filter((v) => v.slotId === slotId && v.status === "completada")
           .sort((a, b) => b.date - a.date)[0];
@@ -1126,16 +1217,39 @@ const CupoStore = (() => {
     return Number.isFinite(n) && n >= 0 ? n : 1;
   }
 
-  function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours }) {
+  // renames: { services: { "Nombre viejo": "Nombre nuevo" }, staff: { idDeLaPersona: "Nombre nuevo" } }.
+  // Cuando el negocio renombra un servicio o a una persona, lo que ya estaba armado con el
+  // nombre viejo (los servicios que hace cada persona, los cupos) se pone al día; antes
+  // quedaban cupos "Sin servicios" que el cliente no veía y personas con el nombre viejo.
+  function updateBusiness(businessId, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours, renames }) {
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
-    if (!business) return { ok: false };
-    business.name = name;
+    if (!business) return { ok: false, error: "Negocio no encontrado." };
+    const text = CupoValidate.businessText(name, address);
+    if (!text.ok) return text;
+    let catalog;
+    if (servicesCatalog !== undefined) {
+      const cat = CupoValidate.catalog(servicesCatalog);
+      if (!cat.ok) return cat;
+      catalog = cat.catalog;
+    }
+    let photoList;
+    if (photos !== undefined) {
+      photoList = (photos || []).map((u) => String(u).trim()).filter(Boolean);
+      if (photoList.length > CupoValidate.LIMITS.photosMax) return { ok: false, error: "Puedes tener hasta " + CupoValidate.LIMITS.photosMax + " fotos." };
+      if (photoList.some((u) => !/^(https?:\/\/\S+|data:image\/\S+)$/i.test(u))) {
+        return { ok: false, error: "Cada foto debe ser una dirección web que empiece con http:// o https://." };
+      }
+    }
+    const ph = phone !== undefined ? CupoValidate.phone(phone) : null;
+    if (ph && !ph.ok) return ph;
+
+    business.name = text.name;
     business.category = category;
-    business.address = address;
-    if (servicesCatalog !== undefined) business.servicesCatalog = servicesCatalog;
-    if (photos !== undefined) business.photos = photos;
-    if (phone !== undefined) business.phone = String(phone || "").replace(/\D/g, "") || null;
+    business.address = text.address;
+    if (catalog !== undefined) business.servicesCatalog = catalog;
+    if (photoList !== undefined) business.photos = photoList;
+    if (ph) business.phone = ph.phone || null;
     if (cancelHours !== undefined) business.cancelHours = Math.max(0, Math.min(72, parseInt(cancelHours, 10) || 0));
     if (staff !== undefined) {
       // "Editar negocio" solo manda id + nombre: lo que hace cada persona
@@ -1146,7 +1260,24 @@ const CupoStore = (() => {
         return { ...s, services: Array.isArray(s.services) ? s.services : (old && old.services) || [] };
       });
     }
-    saveBusinesses(businesses);
+    if (renames && renames.services) {
+      const map = renames.services;
+      (business.staff || []).forEach((st) => {
+        st.services = (st.services || []).map((n) => (Object.prototype.hasOwnProperty.call(map, n) ? map[n] : n));
+      });
+      (business.slots || []).forEach((sl) => {
+        // Los cupos libres con servicio fijo toman el nombre nuevo; los ya reservados conservan
+        // el que se vendió (así queda en el historial).
+        if (sl.status === "available" && sl.service && Object.prototype.hasOwnProperty.call(map, sl.service)) sl.service = map[sl.service];
+      });
+    }
+    if (renames && renames.staff) {
+      (business.slots || []).forEach((sl) => {
+        if (sl.staffId && Object.prototype.hasOwnProperty.call(renames.staff, sl.staffId)) sl.staffName = renames.staff[sl.staffId];
+      });
+    }
+    const saveError = trySave(businesses);
+    if (saveError) return { ok: false, error: saveError };
     return { ok: true, business };
   }
 
@@ -1177,18 +1308,28 @@ const CupoStore = (() => {
 
   // ¿El cliente tuvo (o tiene) una reserva en este negocio? Requisito mínimo
   // para poder dejar reseña — ver HU-06 del Marco de trabajo ágil.
+  // Solo reseña quien ya fue atendido: una venta completada cuya cita ya pasó y a la que el
+  // negocio no marcó "No llegó" (antes bastaba reservar y cancelar, o una cita futura).
   function hasReservationAt(clientId, businessId) {
     const business = getBusinessById(businessId);
     if (!business) return false;
-    return (business.sales || []).some((v) => v.clientId === clientId);
+    const now = Date.now();
+    return (business.sales || []).some((v) =>
+      v.clientId === clientId
+      && v.status === "completada"
+      && (v.attendance || "pendiente") !== "no_asistio"
+      && (v.startsAt || v.date) <= now);
   }
 
   function addReview(businessId, clientId, { rating, comment, photoUrl }) {
-    if (!hasReservationAt(clientId, businessId)) {
-      return { ok: false, error: "Solo quienes ya reservaron en este negocio pueden dejar una reseña." };
+    const r = parseInt(rating, 10);
+    if (!(r >= 1 && r <= 5)) return { ok: false, error: "Selecciona una calificación de 1 a 5." };
+    if (String(comment || "").trim().length > CupoValidate.LIMITS.comment) {
+      return { ok: false, error: "La reseña es demasiado larga (máximo " + CupoValidate.LIMITS.comment + " caracteres)." };
     }
-    const r = Math.max(1, Math.min(5, parseInt(rating, 10) || 0));
-    if (!r) return { ok: false, error: "Selecciona una calificación de 1 a 5." };
+    if (!hasReservationAt(clientId, businessId)) {
+      return { ok: false, error: "Solo quienes ya fueron atendidos en este negocio pueden dejar una reseña." };
+    }
     const businesses = getBusinesses();
     const business = businesses.find((b) => b.id === businessId);
     if (!business) return { ok: false, error: "Negocio no encontrado." };
@@ -1248,7 +1389,7 @@ const CupoStore = (() => {
     const fresh = [];
     businesses.forEach((b) => {
       (b.slots || []).forEach((s) => {
-        if (s.status === "available" && s.createdAt > since) {
+        if (s.status === "available" && s.time > Date.now() && s.createdAt > since) {
           fresh.push({ businessId: b.id, businessName: b.name, slotId: s.id, label: s.label, service: s.service });
         }
       });
@@ -1328,6 +1469,7 @@ const CupoStore = (() => {
     setAttendance,
     cancelHoursOf,
     startOfDay,
+    init,
     addReview,
     hasReservationAt,
     getAverageRating,
@@ -1338,4 +1480,6 @@ const CupoStore = (() => {
   };
 })();
 
-CupoStore.init();
+// OJO: CupoStore.init() (sembrar los 48 negocios de demostración) lo llama js/data-adapter.js,
+// y solo en modo localStorage: antes corría siempre y llenaba el navegador de cada visitante del
+// sitio real con ~800 KB de datos de demostración que no usaba.

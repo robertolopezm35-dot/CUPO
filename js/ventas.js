@@ -1,19 +1,30 @@
 (async function () {
-  const session = await DataStore.getSession();
-  if (!session || session.role !== "negocio") {
-    window.location.href = "auth.html?mode=login&role=negocio";
+  let session;
+  let business;
+  try {
+    session = await DataStore.getSession();
+    if (!session || session.role !== "negocio") {
+      window.location.href = "auth.html?mode=login&role=negocio";
+      return;
+    }
+    // Cupos de una ventana alrededor de hoy (para ocupación y "cupos libres por llenar").
+    const today0 = DataStore.startOfDay(Date.now());
+    business = await DataStore.getBusinessById(session.id, { slotsFrom: today0 - 120 * 86400000, slotsTo: today0 + 120 * 86400000 });
+  } catch (err) {
+    // Un fallo de red NO es "no hay cuenta": se avisa y se deja reintentar, sin cerrar la sesión.
+    console.error("No se pudo cargar Ventas:", err);
+    CupoUI.fatal("No pudimos cargar tus ventas.");
     return;
   }
-
-  const business = await DataStore.getBusinessById(session.id);
   if (!business) {
     await DataStore.clearSession();
     window.location.href = "auth.html?mode=login&role=negocio";
     return;
   }
+  DataStore.watchSessionChange();
 
   document.getElementById("userName").textContent = business.name;
-  document.getElementById("userAvatar").textContent = business.name.charAt(0).toUpperCase();
+  document.getElementById("userAvatar").textContent = CupoValidate.initial(business.name);
 
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await DataStore.clearSession();
@@ -93,18 +104,22 @@
     return { from: -Infinity, to: Infinity };
   }
 
-  // La ventana inmediata anterior y de la misma duración, para la tendencia.
-  function previousWindow(win, p) {
+  // La ventana inmediata anterior y de la misma duración, para la tendencia. Si el período
+  // todavía no termina (hoy, o los últimos 7 días, que incluyen hoy), se compara contra el
+  // MISMO tramo ya transcurrido: a las 9:05 "hoy" no se mide contra el día de ayer completo.
+  function previousWindow(win, p, now) {
     if (!win || !Number.isFinite(win.from)) return null;
-    if (p === "today") return { from: addDays(win.from, -1), to: win.from };
-    const days = Math.round((win.to - win.from) / DAY_MS);
-    return { from: addDays(win.from, -days), to: win.from };
+    const days = p === "today" ? 1 : Math.round((win.to - win.from) / DAY_MS);
+    const from = addDays(win.from, -days);
+    const full = win.from;
+    const to = win.to > now && now > win.from ? Math.min(full, from + (now - win.from)) : full;
+    return { from, to };
   }
 
   // Hora de la cita. Una venta guardada antes de existir ese dato (o en una
   // base sin migrar) la recupera de la hora de su cupo; si el cupo ya no está,
   // lo más cercano que se sabe es cuándo se reservó.
-  const slotTime = new Map((business.slots || []).map((sl) => [sl.id, sl.time]));
+  let slotTime = new Map((business.slots || []).map((sl) => [sl.id, sl.time]));
   const whenOf = (s) => s.startsAt || slotTime.get(s.slotId) || s.date;
   const inWin = (s, win) => win && whenOf(s) >= win.from && whenOf(s) < win.to;
 
@@ -146,7 +161,9 @@
 
   // Línea/área en SVG puro (sin librerías) para "Ingresos por día" — con un
   // solo punto no hay línea que trazar, así que cae de vuelta a las barras.
+  let lineChartState = null;
   function renderLineChart(container, rows, opts = {}) {
+    lineChartState = null;
     if (!rows.length) {
       container.innerHTML = emptyMsg("Sin datos en este período.");
       return;
@@ -155,7 +172,10 @@
       renderBars(container, rows, opts);
       return;
     }
-    const W = 640, H = 220, padX = 36, padY = 24, labelH = 24;
+    // 1 unidad del viewBox = 1 píxel real: así la letra no se encoge a 4 px en un celular
+    // (antes el viewBox fijo de 640 se escalaba a ~300 px de pantalla).
+    lineChartState = { container, rows, opts };
+    const W = Math.max(Math.round(container.clientWidth) || 640, 260), H = 220, padX = W < 420 ? 30 : 36, padY = 24, labelH = 24;
     const max = Math.max(...rows.map((r) => r.value), 1);
     const plotW = W - padX * 2;
     const plotH = H - padY * 2 - labelH;
@@ -171,14 +191,24 @@
     const dots = points.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="#4338CA"><title>${esc(p.r.label)}: ${opts.money ? MONEY(p.r.value) : p.r.value}</title></circle>`).join("");
     // Con muchos puntos las etiquetas del eje se encimarían: se muestran
     // una de cada N.
-    const every = Math.ceil(rows.length / 9);
-    const axisLabels = points.map((p, i) => (i % every === 0 || i === points.length - 1)
-      ? `<text x="${p.x.toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="11" fill="#4B5563">${esc(p.r.label)}</text>` : "").join("");
-    const valueLabels = rows.length <= 8
-      ? points.map((p) => `<text x="${p.x.toFixed(1)}" y="${(Math.max(p.y - 10, 12)).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#14142B">${opts.money ? MONEY(p.r.value) : p.r.value}</text>`).join("")
+    // ~64 px por etiqueta del eje ("12 nov"); la última siempre se muestra, así que se
+    // omite la penúltima si quedaría encimada.
+    const maxLabels = Math.max(2, Math.floor(plotW / 64));
+    const every = Math.ceil(rows.length / maxLabels);
+    const lastIdx = points.length - 1;
+    const prevShown = lastIdx - (lastIdx % every);
+    // La última etiqueta (la fecha más reciente) siempre sale; si quedaría pegada a la
+    // anterior, se quita la anterior.
+    const closeLast = lastIdx !== prevShown && (lastIdx - prevShown) * stepX < 56;
+    const axisLabels = points.map((p, i) => {
+      const show = i === lastIdx || (i % every === 0 && !(closeLast && i === prevShown));
+      return show ?`<text x="${p.x.toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="12" fill="#4B5563">${esc(p.r.label)}</text>` : "";
+    }).join("");
+    const valueLabels = rows.length <= 8 && stepX >= 48
+      ? points.map((p) => `<text x="${p.x.toFixed(1)}" y="${(Math.max(p.y - 10, 12)).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="#14142B">${opts.money ? MONEY(p.r.value) : p.r.value}</text>`).join("")
       : "";
     container.innerHTML = `
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Ingresos por día">
+      <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Ingresos por día">
         <defs>
           <linearGradient id="lineChartFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#4338CA" stop-opacity="0.25" />
@@ -230,7 +260,9 @@
     const keys = [];
     const step = byWeek ? 7 : 1;
     for (let k = stepOf(first); k <= last; k = addDays(k, step)) keys.push(k);
-    return keys.slice(-31).map((k) => ({ label: byWeek ? weekLabel(k) : dayLabel(k), value: buckets.get(k) || 0 }));
+    // Sin recortar: la suma de la gráfica debe coincidir con el total de Ingresos
+    // (el eje ya adelgaza las etiquetas cuando hay muchos puntos).
+    return keys.map((k) => ({ label: byWeek ? weekLabel(k) : dayLabel(k), value: buckets.get(k) || 0 }));
   }
 
   const WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -293,7 +325,7 @@
   }
 
   // ── Tendencia ────────────────────────────────────────────────────────────
-  const PREVIOUS_LABEL = { today: "ayer", "7": "los 7 días anteriores", "30": "los 30 días anteriores", custom: "el período anterior" };
+  const PREVIOUS_LABEL = { today: "ayer a esta hora", "7": "los 7 días anteriores", "30": "los 30 días anteriores", custom: "el período anterior" };
 
   function renderTrend(el, current, previous, label) {
     el.className = "trend";
@@ -305,9 +337,10 @@
       el.textContent = current > 0 ? "Sin ingresos en " + label + " para comparar" : "";
       return;
     }
-    const pct = ((current - previous) / previous) * 100;
-    el.textContent = (pct > 0 ? "+" : "") + pct.toFixed(0) + "% vs. " + label;
-    el.className = "trend " + (pct > 0 ? "up" : pct < 0 ? "down" : "");
+    const rounded = Math.round(((current - previous) / previous) * 100);
+    // Un cambio que redondea a 0% no es ni subida ni bajada (antes salía "-0%" en rojo).
+    el.textContent = (rounded > 0 ? "+" : "") + rounded + "% vs. " + label;
+    el.className = "trend " + (rounded > 0 ? "up" : rounded < 0 ? "down" : "");
   }
 
   // ── Secciones ────────────────────────────────────────────────────────────
@@ -331,16 +364,25 @@
 
   // Dinero que todavía se puede ganar: cupos libres que aún no empiezan.
   function renderFillInsight(container, win, now) {
-    const slots = (business.slots || []).filter((s) => s.status === "available" && s.time > now && s.time >= win.from && s.time < win.to);
+    const ahead = (business.slots || []).filter((s) => s.time > now && s.time >= win.from && s.time < win.to);
+    const slots = ahead.filter((s) => s.status === "available");
     const priced = slots.map((s) => {
       const info = CupoSchedule.describeSlot(business, s);
       return { slot: s, price: info.bookable ? info.price : 0 };
     }).filter((x) => x.price > 0);
     const published = (business.slots || []).length;
     if (!priced.length) {
-      container.innerHTML = published
-        ? emptyMsg("No tienes cupos libres por venir en este período. ¡Buen trabajo, tu agenda está llena!")
-        : emptyMsg('Aún no publicas cupos. Define tu horario semanal en <a href="negocio.html">Mi agenda</a> y se publican solos.');
+      let msg;
+      if (!published) {
+        msg = 'Aún no publicas cupos. Define tu horario semanal en <a href="negocio.html">Mi agenda</a> y se publican solos.';
+      } else if (slots.length) {
+        msg = 'Tienes cupos libres por venir, pero sin un servicio con precio. Revisa tu catálogo en <a href="negocio.html">Mi agenda</a>.';
+      } else if (ahead.some((s) => s.status === "booked")) {
+        msg = "No tienes cupos libres por venir en este período. ¡Buen trabajo, tu agenda está llena!";
+      } else {
+        msg = 'No tienes cupos publicados por venir en este período. Revisa tu horario en <a href="negocio.html">Mi agenda</a>.';
+      }
+      container.innerHTML = emptyMsg(msg);
       return;
     }
     const potential = priced.reduce((t, x) => t + x.price, 0);
@@ -391,9 +433,16 @@
     });
     const winFrom = windowStartForMix;
     let fresh = 0;
-    clients.forEach((c, k) => {
-      if (firstVisit.get(k) >= winFrom) fresh += 1;
-    });
+    if (!Number.isFinite(winFrom)) {
+      // "Todo": no hay un "antes" contra el cual ser nuevo, así que nuevo = vino una sola vez.
+      clients.forEach((c) => {
+        if (c.visits === 1) fresh += 1;
+      });
+    } else {
+      clients.forEach((c, k) => {
+        if (firstVisit.get(k) >= winFrom) fresh += 1;
+      });
+    }
     const total = clients.size;
     const returning = total - fresh;
     const returningPct = total ? Math.round((returning / total) * 100) : 0;
@@ -429,19 +478,22 @@
 
   function matchesQuery(s, q) {
     if (!q) return true;
-    const hay = [s.clientName, s.service, s.folio, s.staffName].filter(Boolean).join(" ").toLowerCase();
+    const hay = CupoValidate.fold([s.clientName, s.service, s.folio, s.staffName].filter(Boolean).join(" "));
     return hay.includes(q);
   }
+
+  // Mismo criterio que el aviso de arriba: solo las citas de las últimas 2 semanas.
+  const CONFIRM_DAYS = 14;
 
   function matchesFilter(s, filter, now) {
     const st = stateOf(s, now);
     if (filter === "all") return true;
-    if (filter === "confirmar") return st === "realizada" && s.attendance === "pendiente";
+    if (filter === "confirmar") return st === "realizada" && s.attendance === "pendiente" && whenOf(s) >= now - CONFIRM_DAYS * DAY_MS;
     return st === filter;
   }
 
   function historyRows(win, now) {
-    const q = histQuery.trim().toLowerCase();
+    const q = CupoValidate.fold(histQuery.trim());
     return allSales
       .filter((s) => inWin(s, win) && matchesFilter(s, histFilter, now) && matchesQuery(s, q))
       .sort((a, b) => whenOf(b) - whenOf(a));
@@ -500,7 +552,12 @@
 
   function exportCsv() {
     const now = Date.now();
-    const win = windowFor(period, now) || { from: -Infinity, to: Infinity };
+    const win = windowFor(period, now);
+    if (!win) {
+      // Un rango vacío o al revés NO debe exportar todo el historial por accidente.
+      toast("Elige las dos fechas del rango antes de descargar.");
+      return;
+    }
     const rows = historyRows(win, now);
     if (!rows.length) {
       toast("No hay citas que exportar con este filtro.");
@@ -532,7 +589,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cupo-ventas-" + new Date().toISOString().slice(0, 10) + ".csv";
+    a.download = "cupo-ventas-" + CupoSchedule.dateKey(Date.now()) + ".csv";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -543,8 +600,9 @@
   function captionFor(win) {
     if (!win) return "Elige las dos fechas del rango.";
     if (!Number.isFinite(win.from)) return "Todo tu historial.";
-    const last = win.to - DAY_MS;
-    if (win.to - win.from <= DAY_MS) return new Date(win.from).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
+    // addDays (no restar 24 h): en un día de cambio de horario dura 23 o 25 h.
+    const last = addDays(win.to, -1);
+    if (addDays(win.from, 1) >= win.to) return new Date(win.from).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" });
     return "Del " + new Date(win.from).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) + " al " + new Date(last).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
   }
 
@@ -556,7 +614,7 @@
 
     // "Por confirmar": citas de las últimas 2 semanas sin marcar. Más viejas
     // se dan por atendidas para no estar molestando por siempre.
-    const pending = allSales.filter((s) => stateOf(s, now) === "realizada" && s.attendance === "pendiente" && whenOf(s) >= now - 14 * DAY_MS);
+    const pending = allSales.filter((s) => matchesFilter(s, "confirmar", now));
     const banner = document.getElementById("pendingBanner");
     banner.hidden = !pending.length;
     if (pending.length) {
@@ -582,7 +640,7 @@
     document.getElementById("statClients").textContent = unique.size;
     document.getElementById("statClientsDetail").textContent = done.length > unique.size ? "Regresaron " + (done.length - unique.size) + " vez/veces" : "";
 
-    const prevWin = previousWindow(win, period);
+    const prevWin = previousWindow(win, period, now);
     const prevTotal = prevWin ? sum(allSales.filter((s) => inWin(s, prevWin) && stateOf(s, now) === "realizada")) : 0;
     renderTrend(document.getElementById("statTotalTrend"), total, prevTotal, prevWin ? PREVIOUS_LABEL[period] : null);
 
@@ -590,11 +648,14 @@
     document.getElementById("statUpcoming").textContent = MONEY(sum(upcoming));
     document.getElementById("statUpcomingDetail").textContent = upcoming.length ? upcoming.length + " cita" + (upcoming.length === 1 ? "" : "s") + " reservada" + (upcoming.length === 1 ? "" : "s") : "Nada reservado por venir";
 
-    const slotsInWin = (business.slots || []).filter((s) => s.time >= w.from && s.time < w.to);
+    // Ocupación = de los cupos que TODAVÍA no empiezan, cuántos ya tienen cita. Los cupos libres
+    // que ya pasaron se borran solos al sincronizar el horario, así que contarlos inflaba el
+    // porcentaje (un día pasado siempre salía ~100%). Del pasado no se puede saber la capacidad.
+    const slotsInWin = (business.slots || []).filter((s) => s.time > now && s.time >= w.from && s.time < w.to && (s.status === "booked" || s.status === "available"));
     const booked = slotsInWin.filter((s) => s.status === "booked").length;
     const occ = slotsInWin.length ? (booked / slotsInWin.length) * 100 : null;
     document.getElementById("statOccupancy").textContent = occ == null ? "—" : occ.toFixed(0) + "%";
-    document.getElementById("statOccupancyDetail").textContent = slotsInWin.length ? booked + " de " + slotsInWin.length + " cupos" : "Sin cupos publicados";
+    document.getElementById("statOccupancyDetail").textContent = slotsInWin.length ? booked + " de " + slotsInWin.length + " cupos por venir" : "Sin cupos por venir";
 
     const past = done.length + noshow.length;
     const noshowRate = past ? (noshow.length / past) * 100 : 0;
@@ -633,7 +694,7 @@
     document.querySelectorAll("#periodTabs button").forEach((b) => {
       const on = b.dataset.period === p;
       b.classList.toggle("active", on);
-      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.setAttribute("aria-pressed", on ? "true" : "false");
     });
     render();
   }
@@ -643,21 +704,24 @@
     if (!btn) return;
     if (btn.dataset.period === "custom" && !customFrom) {
       // Primera vez: el rango arranca en los últimos 7 días.
-      const today = new Date();
-      customTo = today.toISOString().slice(0, 10);
-      customFrom = new Date(addDays(today.getTime(), -6)).toISOString().slice(0, 10);
+      const now = Date.now();
+      customTo = CupoSchedule.dateKey(now);
+      customFrom = CupoSchedule.dateKey(addDays(startOfDay(now), -6));
       document.getElementById("rangeFrom").value = customFrom;
       document.getElementById("rangeTo").value = customTo;
     }
     setPeriod(btn.dataset.period);
   });
 
-  function onRangeChange() {
+  function onRangeChange(e) {
+    const changed = e && e.target ? e.target.id : "";
     customFrom = document.getElementById("rangeFrom").value;
     customTo = document.getElementById("rangeTo").value;
     if (customFrom && customTo && customTo < customFrom) {
-      // Si el "al" queda antes que el "del", se acomodan solos.
-      [customFrom, customTo] = [customTo, customFrom];
+      // Si quedan al revés, se mueve la OTRA fecha (no se invierten: mientras se teclea
+      // un año, los valores intermedios cambiaban solos y confundían).
+      if (changed === "rangeFrom") customTo = customFrom;
+      else customFrom = customTo;
       document.getElementById("rangeFrom").value = customFrom;
       document.getElementById("rangeTo").value = customTo;
     }
@@ -691,6 +755,19 @@
     document.getElementById("salesList").scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
+  // Tras repintar la lista el botón que se pulsó ya no existe: el foco regresa a la misma
+  // cita (o a la siguiente pendiente) en vez de caer en <body>.
+  function refocusAttendance(saleId) {
+    const list = document.getElementById("salesList");
+    let target = null;
+    list.querySelectorAll("button[data-sale]").forEach((b) => {
+      if (!target && b.dataset.sale === saleId) target = b;
+    });
+    if (!target) target = list.querySelector("button[data-att]");
+    if (!target) target = document.getElementById("histFilter");
+    if (target) target.focus({ preventScroll: true });
+  }
+
   document.getElementById("salesList").addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-att]");
     if (!btn) return;
@@ -707,11 +784,61 @@
       }
       sale.attendance = next;
       render();
+      refocusAttendance(sale.id);
     } catch (err) {
       console.error(err);
       toast("No se pudo guardar. Revisa tu conexión.");
       btn.disabled = false;
     }
+  });
+
+  // ── Datos al día ─────────────────────────────────────────────────────────
+  // Esta página se queda abierta horas: al volver a ella tras un rato, se recargan las
+  // ventas y los cupos (antes mostraba lo de la última vez hasta recargar a mano).
+  let hiddenAt = 0;
+  let reloading = false;
+  async function reloadData() {
+    if (reloading) return;
+    reloading = true;
+    try {
+      const today0 = DataStore.startOfDay(Date.now());
+      const [freshBiz, freshSales] = await Promise.all([
+        DataStore.getBusinessById(business.id, { slotsFrom: today0 - 120 * DAY_MS, slotsTo: today0 + 120 * DAY_MS }),
+        DataStore.getSales(business.id),
+      ]);
+      if (!freshBiz) return;
+      business = freshBiz;
+      allSales = freshSales;
+      slotTime = new Map((business.slots || []).map((sl) => [sl.id, sl.time]));
+      render();
+    } catch (err) {
+      // Refresco de fondo: se queda lo que ya se veía; sin toast para no molestar.
+      console.warn("No se pudo refrescar Ventas:", err);
+    } finally {
+      reloading = false;
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (hiddenAt && Date.now() - hiddenAt > 60000) reloadData();
+    hiddenAt = 0;
+  });
+
+  // La gráfica de línea mide el ancho real de su contenedor: se repinta al girar el celular
+  // o cambiar el tamaño de la ventana.
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (!lineChartState) return;
+      const { container, rows, opts } = lineChartState;
+      if (container.isConnected && Math.abs((Math.round(container.clientWidth) || 640) - (container.querySelector("svg") ? Number(container.querySelector("svg").getAttribute("width")) : 0)) > 8) {
+        renderLineChart(container, rows, opts);
+      }
+    }, 150);
   });
 
   render();

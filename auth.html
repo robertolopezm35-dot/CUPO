@@ -13,15 +13,16 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <nav class="navbar">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
 </nav>
 
-<div class="auth-wrap">
+<main class="auth-wrap" id="main" tabindex="-1">
   <div class="auth-card">
-    <div class="role-toggle">
-      <button type="button" id="roleClienteBtn" class="active">Cliente</button>
-      <button type="button" id="roleNegocioBtn">Negocio</button>
+    <div class="role-toggle" role="group" aria-label="Tipo de cuenta">
+      <button type="button" id="roleClienteBtn" class="active" aria-pressed="true">Cliente</button>
+      <button type="button" id="roleNegocioBtn" aria-pressed="false">Negocio</button>
     </div>
 
     <h1 id="authTitle">Crear cuenta</h1>
@@ -46,15 +47,15 @@
         <input type="email" name="email" autocomplete="email" required>
       </div>
       <div class="field">
-        <label>Teléfono</label>
+        <label for="registerPhone">Teléfono</label>
         <div class="phone-row">
-          <select name="countryIso" id="countryCodeSelect"></select>
-          <input type="tel" name="phone" inputmode="numeric" maxlength="10" pattern="\d{10}" placeholder="10 dígitos" autocomplete="tel-national" required>
+          <select name="countryIso" id="countryCodeSelect" aria-label="País del teléfono"></select>
+          <input type="tel" name="phone" id="registerPhone" inputmode="numeric" maxlength="10" pattern="\d{10}" placeholder="10 dígitos" autocomplete="tel-national" required>
         </div>
       </div>
       <div class="field">
         <label>Contraseña</label>
-        <input type="password" name="password" autocomplete="new-password" required minlength="4">
+        <input type="password" name="password" autocomplete="new-password" required minlength="6">
       </div>
       <label class="accept-row"><input type="checkbox" name="accept" required> <span>Acepto los <a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones</a> y el <a href="privacidad.html" target="_blank" rel="noopener">Aviso de privacidad</a>.</span></label>
       <button type="submit" class="btn btn-primary btn-block">Crear cuenta de cliente</button>
@@ -80,7 +81,7 @@
       </div>
       <div class="field">
         <label>Contraseña</label>
-        <input type="password" name="password" autocomplete="new-password" required minlength="4">
+        <input type="password" name="password" autocomplete="new-password" required minlength="6">
       </div>
       <label class="accept-row"><input type="checkbox" name="accept" required> <span>Acepto los <a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones</a> y el <a href="privacidad.html" target="_blank" rel="noopener">Aviso de privacidad</a>.</span></label>
       <button type="submit" class="btn btn-primary btn-block">Registrar mi negocio</button>
@@ -129,10 +130,12 @@
       <button type="button" id="modeToggleBtn">Inicia sesión</button>
     </div>
   </div>
-</div>
+</main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <script src="js/schedule.js"></script>
+<script src="js/validate.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

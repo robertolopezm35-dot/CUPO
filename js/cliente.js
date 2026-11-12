@@ -8,13 +8,22 @@
   const loginUrl = "auth.html?mode=login&role=cliente&next=" + encodeURIComponent(hereWithQuery);
   const registerUrl = "auth.html?mode=register&role=cliente&next=" + encodeURIComponent(hereWithQuery);
 
-  const session = await DataStore.getSession();
+  let session = null;
   let client = null;
-  if (session && session.role === "cliente") {
-    client = await DataStore.getClientById(session.id);
-    if (!client) await DataStore.clearSession(); // sesión vieja: se trata como visita
+  try {
+    session = await DataStore.getSession();
+    if (session && session.role === "cliente") {
+      client = await DataStore.getClientById(session.id);
+      if (!client) await DataStore.clearSession(); // la cuenta ya no existe de verdad
+    }
+  } catch (err) {
+    // Un fallo de red NO es "no hay cuenta": se avisa y se deja reintentar, sin cerrar la sesión.
+    console.error("No se pudo cargar la cuenta:", err);
+    CupoUI.fatal("No pudimos cargar tu cuenta.");
+    return;
   }
   const isGuest = !client;
+  DataStore.watchSessionChange();
 
   const userBox = document.getElementById("userBox");
   const guestBox = document.getElementById("guestBox");
@@ -26,7 +35,7 @@
     document.getElementById("reservationsSection").hidden = true;
   } else {
     document.getElementById("userName").textContent = client.name;
-    document.getElementById("userAvatar").textContent = client.name.charAt(0).toUpperCase();
+    document.getElementById("userAvatar").textContent = CupoValidate.initial(client.name);
     document.getElementById("logoutBtn").addEventListener("click", async () => {
       await DataStore.clearSession();
       window.location.href = "index.html";
@@ -107,7 +116,7 @@
 
   function renderAreaTabs() {
     areaTabsEl.innerHTML = DataStore.AREAS.map((area) => `
-      <button class="area-tab ${area.id === activeArea ? "active" : ""} ${area.comingSoon ? "coming-soon" : ""}" data-area="${area.id}">
+      <button type="button" class="area-tab ${area.id === activeArea ? "active" : ""} ${area.comingSoon ? "coming-soon" : ""}" data-area="${area.id}" aria-pressed="${area.id === activeArea}">
         <span>${area.icon} ${area.name}</span>
         ${area.comingSoon ? '<span class="soon-badge">Pronto</span>' : ""}
       </button>
@@ -144,7 +153,7 @@
   function renderDayTabs() {
     const html = [];
     for (let i = 0; i <= 6; i++) {
-      html.push(`<button class="day-tab ${i === dayOffset && !soonOnly ? "active" : ""}" data-day="${i}">${dayLabel(i)}</button>`);
+      html.push(`<button type="button" class="day-tab ${i === dayOffset && !soonOnly ? "active" : ""}" data-day="${i}" aria-pressed="${i === dayOffset && !soonOnly}">${dayLabel(i)}</button>`);
     }
     dayTabsEl.innerHTML = html.join("");
     dayTabsEl.classList.toggle("muted", soonOnly);
@@ -177,9 +186,9 @@
     businessListEl.hidden = false;
     comingSoonPanel.hidden = true;
 
-    filtersEl.innerHTML = `<button class="chip ${activeCategory === "Todas" ? "active" : ""}" data-category="Todas">Todas</button>` +
+    filtersEl.innerHTML = `<button type="button" class="chip ${activeCategory === "Todas" ? "active" : ""}" data-category="Todas" aria-pressed="${activeCategory === "Todas"}">Todas</button>` +
       area.categories.map((cat) =>
-        `<button class="chip ${activeCategory === cat ? "active" : ""}" data-category="${cat}">${cat}</button>`
+        `<button type="button" class="chip ${activeCategory === cat ? "active" : ""}" data-category="${esc(cat)}" aria-pressed="${activeCategory === cat}">${esc(cat)}</button>`
       ).join("");
 
     filtersEl.querySelectorAll(".chip").forEach((btn) => {
@@ -281,6 +290,15 @@
   }
 
   sortNearbyBtn.addEventListener("click", () => {
+    if (userLocation) {
+      // Segundo clic: se quita el orden por cercanía (antes volvía a pedir la ubicación).
+      userLocation = null;
+      sortNearbyBtn.textContent = "📍 Ordenar por cercanía";
+      sortNearbyBtn.setAttribute("aria-pressed", "false");
+      resetPaging();
+      renderBusinesses();
+      return;
+    }
     if (!navigator.geolocation) {
       showToast("Tu navegador no soporta ubicación.");
       return;
@@ -292,6 +310,7 @@
         userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         sortNearbyBtn.disabled = false;
         sortNearbyBtn.textContent = "📍 Ordenado por cercanía";
+        sortNearbyBtn.setAttribute("aria-pressed", "true");
         showToast("Mostrando los negocios más cercanos primero.");
         resetPaging();
         await renderBusinesses();
@@ -309,6 +328,7 @@
     favoritesOnly = on;
     favoritesOnlyBtn.textContent = on ? "♥ Solo favoritos" : "♡ Solo favoritos";
     favoritesOnlyBtn.classList.toggle("active", on);
+    favoritesOnlyBtn.setAttribute("aria-pressed", on ? "true" : "false");
   }
   function setSoonOnly(on) {
     soonOnly = on;
@@ -347,7 +367,7 @@
   });
 
   searchInput.addEventListener("input", async () => {
-    searchTerm = searchInput.value.trim().toLowerCase();
+    searchTerm = CupoValidate.fold(searchInput.value.trim());
     resetPaging();
     await renderBusinesses({ silent: true }); // sin atenuado: parpadearía en cada tecla
   });
@@ -426,9 +446,53 @@
   // mostró su propio toast). Un fallo de red SIEMPRE avisa con toast y NUNCA
   // borra lo que ya se había mostrado — mejor datos viejos que una pantalla
   // en blanco sin explicación.
+  let renderSeq = 0;      // cada llamada tiene un número: una respuesta vieja y lenta no pisa una más nueva
+  let lastListHtml = null; // si el HTML no cambió, no se toca el DOM (se conservan desplegables y foco)
+
+  // Recuerda qué desplegables estaban abiertos y qué tenía el foco, para restaurarlos al repintar.
+  function captureUiState(list) {
+    const open = [];
+    list.querySelectorAll(".biz-card").forEach((card) => {
+      card.querySelectorAll("details").forEach((d, i) => { if (d.open) open.push(card.dataset.businessId + "|" + i); });
+    });
+    const a = document.activeElement;
+    let focus = null;
+    if (a && list.contains(a)) {
+      if (a.dataset && a.dataset.slot) focus = '.slot[data-slot="' + a.dataset.slot + '"]';
+      else if (a.dataset && a.dataset.fav) focus = '[data-fav="' + a.dataset.fav + '"]';
+      else if (a.dataset && a.dataset.share) focus = '[data-share="' + a.dataset.share + '"]';
+      else if (a.tagName === "SUMMARY") {
+        const card = a.closest(".biz-card");
+        const idx = card ? Array.from(card.querySelectorAll("details")).indexOf(a.parentElement) : -1;
+        if (card && idx >= 0) focus = '.biz-card[data-business-id="' + card.dataset.businessId + '"]|summary|' + idx;
+      }
+    }
+    return { open, focus };
+  }
+  function restoreUiState(list, state) {
+    state.open.forEach((key) => {
+      const [id, i] = key.split("|");
+      const card = list.querySelector('.biz-card[data-business-id="' + CSS.escape(id) + '"]');
+      const d = card && card.querySelectorAll("details")[parseInt(i, 10)];
+      if (d) d.open = true;
+    });
+    if (!state.focus) return;
+    let el = null;
+    if (state.focus.includes("|summary|")) {
+      const [cardSel, , idx] = state.focus.split("|");
+      const card = list.querySelector(cardSel);
+      const d = card && card.querySelectorAll("details")[parseInt(idx, 10)];
+      el = d && d.querySelector("summary");
+    } else {
+      el = list.querySelector(state.focus);
+    }
+    if (el) el.focus({ preventScroll: true });
+  }
+
   async function renderBusinesses({ silent } = {}) {
     const area = DataStore.AREAS.find((a) => a.id === activeArea);
     if (!area || area.comingSoon) return;
+    const mySeq = ++renderSeq;
 
     // La primera vez la lista está vacía: se muestran tarjetas "esqueleto" en
     // vez de un hueco en blanco hasta que llegan los negocios.
@@ -449,11 +513,12 @@
       const todayStart = DataStore.startOfDay(Date.now());
       let businesses = (await DataStore.getBusinesses({ slotsFrom: todayStart, slotsTo: todayStart + 8 * DAY_MS }))
         .filter((b) => area.categories.includes(b.category));
+      if (mySeq !== renderSeq) return; // ya hay una consulta más nueva: esta respuesta quedó vieja
       if (activeCategory !== "Todas") {
         businesses = businesses.filter((b) => b.category === activeCategory);
       }
       if (searchTerm) {
-        businesses = businesses.filter((b) => b.name.toLowerCase().includes(searchTerm));
+        businesses = businesses.filter((b) => CupoValidate.fold(b.name).includes(searchTerm));
       }
       if (favoritesOnly) {
         const favIds = client.favoriteBusinessIds || [];
@@ -508,6 +573,7 @@
       }
 
       if (businesses.length === 0) {
+        lastListHtml = null;
         moreBusinessesBtn.hidden = true;
         const filtered = soonOnly || discountOnly || serviceFilter || horarioFilter || searchTerm || favoritesOnly || activeCategory !== "Todas";
         list.innerHTML = `<div class="empty-state">
@@ -521,11 +587,17 @@
       }
 
       const total = businesses.length;
-      const shown = businesses.slice(0, visibleCount);
+      let shown = businesses.slice(0, visibleCount);
+      // La tarjeta del link compartido (?negocio=ID) no debe desaparecer al cambiar de día o
+      // reservar: si el orden la deja fuera de la primera página, se fija arriba.
+      if (targetBusinessId && !shown.some((b) => b.id === targetBusinessId)) {
+        const pinned = businesses.find((b) => b.id === targetBusinessId);
+        if (pinned) shown = [pinned, ...shown.slice(0, Math.max(visibleCount - 1, 0))];
+      }
       moreBusinessesBtn.hidden = shown.length >= total;
       moreBusinessesBtn.textContent = "Ver más negocios (" + (total - shown.length) + ")";
 
-      list.innerHTML = shown.map((b) => {
+      const html = shown.map((b) => safeCard(b, () => {
         const slotsForDay = b.visibleSlots;
         // Igual que "Solo quedan 2 habitaciones" en Booking.com — refuerza que
         // estos son cupos de último momento que se pueden acabar, no un
@@ -541,7 +613,8 @@
               const priceHtml = s.info.originalPrice
                 ? `<span class="price"><s>$${s.info.originalPrice}</s> ${amount} <span class="discount-badge">-${s.discountPct}%</span></span>`
                 : `<span class="price">${amount}${s.status === "booked" ? " · ocupado" : ""}</span>`;
-              return `<div class="slot ${cls}" data-business="${b.id}" data-slot="${s.id}" ${s.status === "available" ? 'role="button" tabindex="0"' : ""}>
+              const slotLabel = `${b.name}: ${s.label}${s.info.service ? ", " + s.info.service : ""}, ${s.duration} minutos, ${amount}`;
+              return `<div class="slot ${cls}" data-business="${b.id}" data-slot="${s.id}" ${s.status === "available" ? `role="button" tabindex="0" aria-label="${esc(slotLabel)}"` : ""}>
                 <span class="time">${s.label}</span>
                 ${s.info.service ? `<span class="price">${esc(s.info.service)}</span>` : ""}
                 <span class="price">${s.duration} min</span>
@@ -557,7 +630,9 @@
           : "";
         const rating = avgRating(b);
         const isFavorite = !isGuest && (client.favoriteBusinessIds || []).includes(b.id);
-        const eligibleForReview = !isGuest && (b.sales || []).some((v) => v.clientId === client.id);
+        // Solo reseña quien ya fue atendido: venta completada, cita pasada y sin "No llegó".
+        const eligibleForReview = !isGuest && (b.sales || []).some((v) =>
+          v.clientId === client.id && v.status === "completada" && (v.attendance || "pendiente") !== "no_asistio" && (v.startsAt || v.date) <= now);
         const nextHtml = b.nextSlot
           ? `<span class="next-pill ${b.nextSlot.time - now < 90 * 60000 ? "soon" : ""}">⚡ Próximo cupo: ${esc(whenWord(b.nextSlot, now))}</span>`
           : "";
@@ -569,11 +644,11 @@
         const catalogHtml = b.servicesCatalog && b.servicesCatalog.length
           ? `<details class="catalog-details">
               <summary>Servicios y precios (${b.servicesCatalog.length})</summary>
-              ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${s.price}</span></div>`).join("")}
+              ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${Number(s.price) || 0}</span></div>`).join("")}
             </details>`
           : "";
 
-        const recentReviews = (b.reviews || []).slice(0, 2);
+        const recentReviews = (b.reviews || []).slice().sort((x, y) => (y.date || 0) - (x.date || 0)).slice(0, 2);
         const reviewsHtml = `<details class="catalog-details">
             <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
             ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
@@ -584,7 +659,7 @@
           ${photoHtml}
           <div class="biz-head">
             <div>
-              <p class="biz-name">${esc(b.name)}</p>
+              <h2 class="biz-name">${esc(b.name)}</h2>
               <div class="biz-meta">
                 <span>${esc(b.address)}</span>
                 <span>★ ${rating.value.toFixed(1)}</span>
@@ -596,8 +671,8 @@
               <span class="badge">${esc(b.category)}</span>
               ${urgencyHtml}
               <div style="display:flex;gap:6px">
-                <button type="button" class="fav-toggle" data-share="${b.id}" title="Compartir" aria-label="Copiar link de este negocio">🔗</button>
-                <button type="button" class="fav-toggle ${isFavorite ? "active" : ""}" data-fav="${b.id}" title="Favorito" aria-label="${isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}" aria-pressed="${isFavorite}">${isFavorite ? "♥" : "♡"}</button>
+                <button type="button" class="fav-toggle" data-share="${b.id}" title="Compartir" aria-label="Copiar link de ${esc(b.name)}">🔗</button>
+                <button type="button" class="fav-toggle ${isFavorite ? "active" : ""}" data-fav="${b.id}" title="Favorito" aria-label="Favorito: ${esc(b.name)}" aria-pressed="${isFavorite}">${isFavorite ? "♥" : "♡"}</button>
               </div>
             </div>
           </div>
@@ -605,7 +680,14 @@
           <div class="slot-list">${slotsHtml}</div>
           ${reviewsHtml}
         </div>`;
-      }).join("");
+      })).join("");
+
+      // Si nada cambió no se repinta: así el refresco de 20 s no cierra los desplegables ni quita el foco.
+      if (html === lastListHtml) return;
+      const uiState = captureUiState(list);
+      list.innerHTML = html;
+      lastListHtml = html;
+      restoreUiState(list, uiState);
 
       list.querySelectorAll(".slot.available").forEach((el) => {
         const go = () => startBooking(el.dataset.business, el.dataset.slot);
@@ -665,13 +747,31 @@
     }
   }
 
+  // Una tarjeta con datos raros (un negocio puede haber guardado cualquier cosa) ya no tumba
+  // la lista completa: esa tarjeta se omite y las demás se pintan.
+  function safeCard(b, build) {
+    try {
+      return build();
+    } catch (err) {
+      console.error("Tarjeta omitida por datos inválidos:", b && b.id, err);
+      return "";
+    }
+  }
+
   // ── Reservar ─────────────────────────────────────────────────────────────
   async function startBooking(businessId, slotId) {
     if (isGuest) {
       window.location.href = bookingAuthUrl(businessId, slotId);
       return;
     }
-    const business = await DataStore.getBusinessById(businessId);
+    let business;
+    try {
+      business = await DataStore.getBusinessById(businessId);
+    } catch (err) {
+      console.error("No se pudo cargar el cupo:", err);
+      showToast("No se pudo cargar el cupo. Revisa tu conexión e intenta de nuevo.");
+      return;
+    }
     const slot = business && business.slots.find((s) => s.id === slotId);
     const options = slot && slot.status === "available" && slot.time > Date.now() ? CupoSchedule.slotOptions(business, slot) : [];
     if (!options.length) {
@@ -691,7 +791,8 @@
         : `${where} · ${only.name ? only.name + " · " : ""}$${only.price}. ¿Confirmas tu reserva?`,
       async () => {
         const chosen = choose ? options.find((o) => o.name === confirmService.value) || only : only;
-        const result = await DataStore.bookSlot(businessId, slotId, client, slot.flexible ? { service: chosen.name } : {});
+        // expectedPrice: el precio que el cliente vio; si el negocio lo cambió mientras decidía, se rechaza.
+        const result = await DataStore.bookSlot(businessId, slotId, client, slot.flexible ? { service: chosen.name, expectedPrice: chosen.price } : { expectedPrice: chosen.price });
         if (!result.ok) {
           showToast(result.error);
           // Alguien más pudo haberse quedado con el cupo justo antes —
@@ -776,12 +877,12 @@
   // ── Mis reservas ─────────────────────────────────────────────────────────
   // Lleva al cliente a la tarjeta de un negocio (para "Reagendar" y "Reservar
   // de nuevo"): limpia cualquier filtro que pueda esconderla y la resalta.
-  async function focusBusiness(name, businessId) {
+  async function focusBusiness(name, businessId, day) {
     resetAllFilters();
-    dayOffset = 0;
+    dayOffset = Number.isInteger(day) && day >= 0 && day <= 6 ? day : 0;
     renderDayTabs();
     searchInput.value = name;
-    searchTerm = name.toLowerCase();
+    searchTerm = CupoValidate.fold(name);
     await renderBusinesses();
     const card = document.querySelector(`.biz-card[data-business-id="${CSS.escape(businessId)}"]`);
     if (card) {
@@ -797,7 +898,9 @@
     const phone = biz && biz.phone;
     const wa = phone ? CupoContact.whatsappUrl("+52", phone, `Hola, tengo una cita en ${r.businessName} (${when}, folio ${r.folio || "—"}). `) : null;
     const tel = phone ? CupoContact.telUrl("+52", phone) : null;
-    const maps = CupoContact.mapsUrl(r.businessName, r.address || (biz && biz.address) || "");
+    // La dirección vigente del negocio manda (si la cambió, "Cómo llegar" no debe apuntar a la vieja).
+    const addr = (biz && biz.address) || r.address || "";
+    const maps = CupoContact.mapsUrl(r.businessName, addr);
     const cancelHours = biz ? biz.cancelHours : 1;
     const cancelable = upcoming && time && time - (Number.isFinite(cancelHours) ? cancelHours : 1) * 3600000 > now;
     const data = `data-business="${esc(r.businessId || "")}" data-slot="${esc(r.slotId)}" data-reservation="${esc(r.reservationId || "")}" data-name="${esc(r.businessName)}" data-label="${esc(when)}"`;
@@ -820,7 +923,7 @@
           <span class="res-when">${esc(when)}${upcoming ? "" : " · pasada"}</span>
           <span class="res-title">${esc(r.businessName)}</span>
           ${sub ? `<span class="res-sub">${sub}</span>` : ""}
-          ${(r.address || (biz && biz.address)) ? `<span class="res-sub">📍 ${esc(r.address || biz.address)}</span>` : ""}
+          ${addr ? `<span class="res-sub">📍 ${esc(addr)}</span>` : ""}
           ${r.folio ? `<span class="review-author">Folio: ${esc(r.folio)}</span>` : ""}
         </div>
         <div class="res-price"><strong>$${r.price}</strong></div>
@@ -830,6 +933,7 @@
     </div>`;
   }
 
+  let lastReservationsHtml = null;
   async function renderReservations() {
     if (isGuest) return;
     const el = document.getElementById("reservationsList");
@@ -842,6 +946,7 @@
     }
     const reservations = fresh ? fresh.reservations : [];
     if (!reservations.length) {
+      lastReservationsHtml = null;
       el.innerHTML = '<div class="empty-state">Todavía no tienes reservas. Elige un cupo arriba y aparecerá aquí con todo lo que necesitas para llegar.</div>';
       return;
     }
@@ -872,13 +977,19 @@
     const upcoming = withTime.filter(isUpcoming).sort((a, b) => a.time - b.time);
     const past = withTime.filter((r) => !isUpcoming(r)).sort((a, b) => (b.time || 0) - (a.time || 0));
 
-    el.innerHTML =
+    const resHtml =
       (upcoming.length
         ? `<h3 class="res-heading">Próximas (${upcoming.length})</h3>` + upcoming.map((r) => reservationHtml(r, bizCache.get(r.businessId), now, true)).join("")
         : '<div class="empty-state">No tienes citas próximas.</div>')
       + (past.length
         ? `<details class="res-history"><summary>Historial (${past.length})</summary>${past.map((r) => reservationHtml(r, bizCache.get(r.businessId), now, false)).join("")}</details>`
         : "");
+    // Si nada cambió no se repinta (así el refresco automático no cierra el historial abierto).
+    if (resHtml === lastReservationsHtml) return;
+    const historyWasOpen = !!(el.querySelector(".res-history") && el.querySelector(".res-history").open);
+    el.innerHTML = resHtml;
+    lastReservationsHtml = resHtml;
+    if (historyWasOpen && el.querySelector(".res-history")) el.querySelector(".res-history").open = true;
 
     const dataOf = (btn) => ({
       businessId: btn.dataset.business,
@@ -889,6 +1000,8 @@
     });
 
     async function cancelFlow(d, { thenReschedule }) {
+      const old = withTime.find((x) => x.slotId === d.slotId);
+      d.dayOffsetOfOld = old && old.time ? Math.round((DataStore.startOfDay(old.time) - DataStore.startOfDay(Date.now())) / DAY_MS) : 0;
       const text = thenReschedule
         ? `Vamos a cancelar tu cita en ${d.name} (${d.label}) y te mostramos otros horarios del mismo negocio. ¿Continuar?`
         : `¿Seguro que quieres cancelar tu reserva en ${d.name} (${d.label})? El cupo se liberará para otros clientes.`;
@@ -901,7 +1014,7 @@
         }
         showToast(thenReschedule ? "Cita cancelada. Elige un nuevo horario." : "Reserva cancelada.");
         await renderReservations();
-        if (thenReschedule) await focusBusiness(d.name, d.businessId);
+        if (thenReschedule) await focusBusiness(d.name, d.businessId, d.dayOffsetOfOld);
         else await renderBusinesses({ silent: true });
       }, false);
     }
@@ -919,7 +1032,7 @@
         start: r.time,
         durationMin: r.duration,
         title: "Cita en " + r.businessName + (r.service ? " — " + r.service : ""),
-        location: [r.businessName, r.address || (biz && biz.address)].filter(Boolean).join(", "),
+        location: [r.businessName, (biz && biz.address) || r.address].filter(Boolean).join(", "),
         description: (r.folio ? "Folio " + r.folio + ". " : "") + "Pagas en el negocio.",
       }));
     }));
@@ -1011,10 +1124,24 @@
   // que recargar la página a mano para enterarse (así lo hacen Uber/DoorDash
   // con su inventario en vivo). Se salta el ciclo si hay un modal abierto o
   // si el cliente está escribiendo en el buscador, para no interrumpirlo.
+  let refreshing = false; // si el servidor tarda, no se acumulan peticiones en paralelo
+  let lastDayKey = CupoSchedule.dateKey(Date.now());
   setInterval(async () => {
-    if (document.hidden) return;
+    if (document.hidden || refreshing) return;
     if ([confirmModal, folioModal, reviewModal].some((m) => m.classList.contains("show"))) return;
     if (document.activeElement === searchInput) return;
-    await renderBusinesses({ silent: true });
+    refreshing = true;
+    try {
+      // Con la página abierta toda la noche, "Hoy"/"Mañana" deben cambiar de día.
+      const today = CupoSchedule.dateKey(Date.now());
+      if (today !== lastDayKey) {
+        lastDayKey = today;
+        renderDayTabs();
+      }
+      await renderBusinesses({ silent: true });
+      await renderReservations(); // una cita cancelada por el negocio, o que ya pasó, se actualiza sola
+    } finally {
+      refreshing = false;
+    }
   }, 20000);
 })();

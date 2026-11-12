@@ -38,8 +38,34 @@ const CupoContact = (() => {
     return d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) + "T" + p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds()) + "Z";
   }
 
+  // Texto de un valor iCalendar (RFC 5545 §3.3.11): \ ; , y saltos de línea se escapan.
+  // (Antes el ";" quedaba sin escapar —"\;" en JS es solo ";"— y un "\r" suelto rompía la línea.)
   function icsEscape(s) {
-    return String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+    return String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r\n|\r|\n/g, "\\n");
+  }
+
+  // Una línea de un .ics no puede pasar de 75 octetos: se parte y las continuaciones
+  // empiezan con un espacio. Se cuenta en bytes UTF-8 (un acento o emoji ocupa 2–4) y
+  // nunca se corta a la mitad de un carácter.
+  function icsFold(line) {
+    const enc = new TextEncoder();
+    const out = [];
+    let cur = "";
+    let bytes = 0;
+    let limit = 75;
+    for (const ch of Array.from(line)) {
+      const n = enc.encode(ch).length;
+      if (bytes + n > limit) {
+        out.push(cur);
+        cur = " ";
+        bytes = 1;
+        limit = 75;
+      }
+      cur += ch;
+      bytes += n;
+    }
+    out.push(cur);
+    return out.join("\r\n");
   }
 
   // Contenido de un archivo .ics con la cita (se agrega al calendario del celular).
@@ -65,7 +91,7 @@ const CupoContact = (() => {
       "END:VALARM",
       "END:VEVENT",
       "END:VCALENDAR",
-    ].filter(Boolean).join("\r\n");
+    ].filter(Boolean).map(icsFold).join("\r\n") + "\r\n"; // CRLF también en la última línea
   }
 
   // Descarga el .ics desde el navegador.

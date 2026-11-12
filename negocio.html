@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Saltar al contenido</a>
 
 <header class="dash-header">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
@@ -22,7 +23,7 @@
   </div>
 </header>
 
-<main class="dash-main">
+<main class="dash-main" id="main" tabindex="-1">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -149,8 +150,8 @@
           <label for="walkinName">¿Te llamaron o llegó alguien? Agéndalo tú</label>
           <div class="walkin-row">
             <input type="text" id="walkinName" placeholder="Nombre del cliente" maxlength="60">
-            <input type="tel" id="walkinPhone" placeholder="Teléfono (opcional)" maxlength="14" inputmode="numeric" autocomplete="off" aria-label="Teléfono del cliente, opcional">
-            <select id="walkinService" hidden></select>
+            <input type="tel" id="walkinPhone" placeholder="Teléfono (opcional)" maxlength="20" inputmode="numeric" autocomplete="off" aria-label="Teléfono del cliente, opcional">
+            <select id="walkinService" hidden aria-label="Servicio del cliente"></select>
             <button type="button" class="btn btn-primary btn-sm" id="walkinBtn">Agendar</button>
           </div>
         </div>
@@ -255,7 +256,7 @@
     <div class="modal-body">
       <div class="field">
         <label>Nombre del negocio</label>
-        <input type="text" id="editName">
+        <input type="text" id="editName" maxlength="80">
       </div>
       <div class="field">
         <label>Categoría</label>
@@ -263,11 +264,11 @@
       </div>
       <div class="field">
         <label>Dirección</label>
-        <input type="text" id="editAddress">
+        <input type="text" id="editAddress" maxlength="200">
       </div>
       <div class="field">
         <label for="editPhone">Teléfono o WhatsApp del negocio (opcional)</label>
-        <input type="tel" id="editPhone" maxlength="14" inputmode="numeric" placeholder="10 dígitos, ej. 8112345678" autocomplete="tel-national">
+        <input type="tel" id="editPhone" maxlength="20" inputmode="numeric" placeholder="10 dígitos, ej. 8112345678" autocomplete="tel-national">
         <span class="field-hint">Tus clientes lo ven en “Mis reservas” para avisarte si llegan tarde o preguntar algo.</span>
       </div>
       <div class="field">
@@ -285,7 +286,7 @@
       <div class="field">
         <label>Fotos (una URL por línea, opcional)</label>
         <textarea id="editPhotos" rows="3" placeholder="https://..."></textarea>
-        <input type="file" id="editPhotoFile" accept="image/*" multiple style="margin-top:6px">
+        <input type="file" id="editPhotoFile" accept="image/*" multiple style="margin-top:6px" aria-label="Subir fotos desde tu dispositivo">
         <span class="field-hint" id="editPhotoHint">O sube tus fotos directo desde tu dispositivo.</span>
       </div>
       <div class="field">
@@ -324,10 +325,12 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <script src="js/schedule.js"></script>
+<script src="js/validate.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>

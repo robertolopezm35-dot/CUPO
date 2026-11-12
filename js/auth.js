@@ -62,6 +62,8 @@
   function render() {
     roleClienteBtn.classList.toggle("active", role === "cliente");
     roleNegocioBtn.classList.toggle("active", role === "negocio");
+    roleClienteBtn.setAttribute("aria-pressed", role === "cliente" ? "true" : "false");
+    roleNegocioBtn.setAttribute("aria-pressed", role === "negocio" ? "true" : "false");
 
     Object.values(forms).forEach((f) => f.classList.remove("active"));
     forms[key()].classList.add("active");
@@ -93,12 +95,21 @@
     // loguearse primero, que regresen exactamente a donde iban en vez de a
     // la lista genérica — pero solo si de verdad vienen para cliente.html,
     // nunca si cambiaron de rol a Negocio en el camino.
+    // location.replace: el formulario de registro/login no se queda en el historial, así
+    // que "Atrás" desde el panel no regresa a un formulario ya enviado.
     const next = params.get("next");
     if (next && role === "cliente" && next.startsWith("cliente.html")) {
-      window.location.href = next;
+      window.location.replace(next);
       return;
     }
-    window.location.href = role === "cliente" ? "cliente.html" : "negocio.html";
+    window.location.replace(role === "cliente" ? "cliente.html" : "negocio.html");
+  }
+
+  // Mínimo de contraseña de Supabase Auth (6): con menos, regresaba un error crudo en inglés.
+  const MIN_PASSWORD = 6;
+  function checkPassword(pw) {
+    if (String(pw || "").length < MIN_PASSWORD) return "La contraseña debe tener al menos " + MIN_PASSWORD + " caracteres.";
+    return null;
   }
 
   // Deshabilita el botón de submit (con un texto de "cargando") mientras la
@@ -124,10 +135,15 @@
       const fd = new FormData(e.target);
       const phone = fd.get("phone").trim();
       if (!/^\d{10}$/.test(phone)) return showError("El teléfono debe tener 10 dígitos.");
+      // Un nombre de solo espacios pasaba el "required" del navegador y creaba una cuenta sin nombre.
+      const names = CupoValidate.personName(fd.get("firstName"), fd.get("lastName"));
+      if (!names.ok) return showError(names.error);
+      const pwError = checkPassword(fd.get("password"));
+      if (pwError) return showError(pwError);
       const result = await DataStore.registerClient({
-        firstName: fd.get("firstName").trim(),
-        lastName: fd.get("lastName").trim(),
-        email: fd.get("email"),
+        firstName: names.first,
+        lastName: names.last,
+        email: String(fd.get("email") || "").trim(),
         password: fd.get("password"),
         countryCode: DataStore.COUNTRY_CODES.find((c) => c.iso === fd.get("countryIso")).dial,
         phone,
@@ -142,11 +158,15 @@
     e.preventDefault();
     withLoading(e.target, async () => {
       const fd = new FormData(e.target);
+      const text = CupoValidate.businessText(fd.get("name"), fd.get("address"));
+      if (!text.ok) return showError(text.error);
+      const pwError = checkPassword(fd.get("password"));
+      if (pwError) return showError(pwError);
       const result = await DataStore.registerBusiness({
-        name: fd.get("name"),
+        name: text.name,
         category: fd.get("category"),
-        address: fd.get("address"),
-        email: fd.get("email"),
+        address: text.address,
+        email: String(fd.get("email") || "").trim(),
         password: fd.get("password"),
       });
       if (!result.ok) return showError(result.error);

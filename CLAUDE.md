@@ -51,6 +51,14 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
 - `db/migracion-ventas-agenda.sql` — lo que le falta a una base que ya tenía
   `schema.sql` + `migracion-horario-semanal.sql` para la ronda "Investigación y mejoras"
   (ver abajo). Idempotente; una instalación nueva no la necesita.
+- `db/migracion-endurecimiento.sql` — las reglas nuevas de la base tras la cacería de bugs
+  (ver "Cacería de bugs con 7 bots"). Va **después** de las dos anteriores. Idempotente;
+  una instalación nueva no la necesita (`schema.sql` ya lo trae).
+- `js/validate.js` — `CupoValidate`: reglas de validación y normalización compartidas por
+  los dos backends y la interfaz (teléfono +52, cupos, catálogo, nombres, búsqueda sin
+  acentos). Sin DOM ni base.
+- `js/ui.js` — `CupoUI`: comportamiento común de la interfaz (modales accesibles, etiquetas
+  de campos, avisos que se anuncian, y el aviso "no pudimos cargar" con Reintentar).
 - `js/schedule.js` — `CupoSchedule`: la lógica del horario semanal (qué cupos deben
   existir según los turnos, cierres y citas ya hechas). No toca ni el DOM ni la base:
   la usan igual `CupoStore` y `SupabaseStore` — ver "Horario semanal y calendario".
@@ -632,10 +640,12 @@ navegador), `book_slot` (ahora recibe el servicio y rechaza cupos que ya
 empezaron), `book_slot_manual`, y `cancel_reservation`/`reopen_slot` actualizadas.
 
 **Acción pendiente tuya:** corre `db/migracion-horario-semanal.sql` **completo** en el
-SQL Editor de Supabase (es idempotente y no borra nada; si ya corriste una versión
-anterior, vuelve a correrlo entero — la versión actual además agrega 3 columnas de
-`sales` que `book_slot()` necesita y mueve a un lugar privado los nombres de quienes
-agenda el negocio a mano). Para saber si tu base está al día, abre la consola del
+SQL Editor de Supabase (es idempotente y no borra nada; la versión actual además agrega
+3 columnas de `sales` que `book_slot()` necesita y mueve a un lugar privado los nombres
+de quienes agenda el negocio a mano). **Ojo (12 nov 2026):** esa migración ya NO se debe
+re-correr después de `migracion-ventas-agenda.sql`/`migracion-endurecimiento.sql`: reemplaza
+funciones por sus versiones viejas. Ahora trae una guarda al inicio y, si la base ya es
+más nueva, se detiene con "ya fue superada" sin tocar nada. Para saber si tu base está al día, abre la consola del
 sitio ya conectado y corre `await SupabaseStore.checkSchema()`: responde
 `{ ok, missing: [...] }` con cada columna o función que falta.
 
@@ -833,7 +843,142 @@ del repo; ojo, las **ventas no se pueden borrar desde un negocio** (RLS solo dej
 así que las de las corridas de prueba se quedan hasta que se borren las cuentas con el SQL
 de abajo ("Borrar las cuentas de prueba").
 
+## Cacería de bugs con 7 bots (12 nov 2026)
+
+Se lanzaron 7 "bots" (revisiones independientes) que probaron toda la página con ojos distintos:
+seguridad/datos, panel del cliente, móvil y accesibilidad, resiliencia (red, carreras, relojes),
+lógica de código, panel del negocio y Ventas. Reportaron ~90 hallazgos (sin contar duplicados);
+se arreglaron todos los de prioridad alta y la gran mayoría de media y baja (lo que se dejó a
+propósito está listado más abajo). Lo importante:
+
+**Seguridad y datos**
+- **XSS por el precio del catálogo** (`price` se insertaba sin escapar en `cliente.js` y en la
+  vista previa del negocio): ahora se fuerza a número y se escapa. La base además valida la forma
+  del catálogo y las fotos.
+- **"Píldora venenosa":** un negocio con `photos` o `services_catalog` de tipo equivocado (ej. un
+  texto en vez de un arreglo) rompía la lista de TODOS los negocios. Ahora `mapBusiness` lo
+  sanea (`CupoValidate.safeCatalog/safePhotos`), cada tarjeta se pinta aislada (una mala no tira
+  a las demás) y la base lo impide (triggers `validate_business`/`validate_slot`).
+- **Textos sin límite** (reseña de 5 MB, nombres, dirección): `CHECK` de largo en la base y los
+  mismos límites en la interfaz (`CupoValidate.LIMITS`).
+- **Fijación de sesión por el hash de la URL:** `detectSessionInUrl` ahora solo está activo en
+  `reset-password.html`.
+- **Reseñas solo de quien fue atendido:** antes bastaba reservar (aunque se cancelara, o la cita
+  fuera mañana). Ahora la venta debe estar completada, la cita ya pasada y sin "No llegó".
+- **Acaparar cupos:** un cliente puede tener **3 citas próximas** como máximo y **no puede
+  tener dos encimadas** (`book_slot` y `CupoStore.bookSlot`). El tope es una constante
+  (`c_max_active` en SQL, `MAX_ACTIVE_RESERVATIONS` en `store.js`): si lo quieres distinto, se
+  cambia en los dos lugares.
+- Bucket `photos`: límite de 5 MB y solo JPG/PNG/WebP/GIF. Un negocio ya no puede borrar un cupo
+  reservado (la política DELETE exige `status = 'available'`).
+- `.ics`: el `;` no se escapaba, un `\r` suelto rompía la línea y faltaban el CRLF final y el
+  plegado a 75 octetos.
+- `supabase-js` quedó **fijo en 2.119.0 con SRI** (antes `@2` flotante). Si algún día se
+  actualiza: `curl .../supabase-js@X.Y.Z/dist/umd/supabase.js | openssl dgst -sha384 -binary |
+  openssl base64 -A` y cambiar el hash en las 5 páginas.
+
+**Resiliencia**
+- **Un error pasajero (500, red caída) cerraba la sesión** o dejaba al cliente como visitante sin
+  avisar. Ahora se distingue "no existe" (`PGRST116`) de "falló" (se lanza), y las 3 páginas
+  muestran un aviso con **Reintentar** sin tocar la sesión (`CupoUI.fatal`).
+- **El negocio podía cancelar la cita de otra persona** (modal abierto con la identidad vieja):
+  `reopen_slot` y `reopenSlot` reciben el folio que se veía en pantalla y rechazan si cambió.
+- **Precio que cambia mientras el cliente confirma:** `book_slot` recibe el precio esperado y avisa
+  en vez de cobrar otro.
+- Respuestas viejas que pisaban a las nuevas (contador de secuencia), refrescos de 20 s que se
+  acumulaban (bandera `refreshing`), refresco fallido que dejaba `business = null`, "Quitar cupo"
+  con éxito falso, doble Enter al agendar a mano, mensajes técnicos crudos ("Failed to fetch"),
+  cerrar sesión en otra pestaña y "Atrás" que mostraba datos tras salir (`watchSessionChange`).
+- Volumen: el negocio ya no baja todo su historial de cupos (ventana de ±120 días) y `getSales`
+  pagina de 1,000 en 1,000 (PostgREST corta ahí).
+- `localStorage` corrupto o de una versión vieja ya no deja la página en blanco.
+
+**Negocio, cliente y Ventas**
+- Cupos sueltos validados (duración 5–480, precio entero ≥ 1, descuento 0–90, hora que no haya
+  pasado, sin encimarse con otro de la misma persona), catálogo sin nombres repetidos,
+  teléfono con `+52`/espacios normalizado a 10 dígitos (antes se truncaba y quedaba otro número).
+- **Renombrar un servicio o a una persona se propaga** a lo que ya estaba armado (antes quedaban
+  cupos "Sin servicios"). Quitar un cupo ya reservado se rechaza.
+- Una tarjeta de un link compartido (`?negocio=ID`) ya no desaparece al reservar o cambiar de día.
+- Búsqueda sin acentos ("barberia" encuentra "Barbería") en el cliente y en el historial de Ventas.
+- **Ventas:** la gráfica ya no omite períodos (recortaba a 31 puntos, y sumaba menos que
+  Ingresos); "Todo" ya no marca a todos como nuevos; el rango por defecto y el CSV usaban fecha
+  UTC (entre 6 pm y medianoche salía mal); un rango vacío ya no exporta todo el historial; el
+  filtro "por confirmar" coincide con el aviso (14 días); el foco no se pierde al marcar
+  Llegó/No llegó; la página se refresca al volver a ella; la gráfica de línea mide su ancho real
+  (en celular las etiquetas medían 4 px).
+
+**Accesibilidad y responsive**
+- Modales con `role="dialog"`, `aria-modal`, título asociado, foco que entra y regresa, Tab que no
+  se escapa, fondo inerte y sin scroll (`CupoUI`). Todos los campos con nombre accesible. Toasts
+  anunciados. Estados seleccionados con `aria-pressed` (pestañas, chips, filtros, rol,
+  período). Enlace "Saltar al contenido" y `<main>` en todas las páginas. Foco visible también en
+  campos (antes `outline: none`), modo de alto contraste (`forced-colors`), objetivos táctiles de
+  44 px, textos largos sin desbordar, encabezados en orden (`h1 → h2`).
+- Auditoría de contraste (WCAG 1.4.3) a 320/360/390 px: 0 fallos; sin scroll horizontal en 11
+  pantallas a los 3 anchos.
+
+**Decisiones que tomé (reversibles, dímelo si prefieres otra):**
+- Tope de 3 citas próximas por cliente (ver arriba).
+- **Ocupación** en Ventas = de los cupos *por venir* en el período, cuántos ya tienen cita
+  ("—" si no hay). Los cupos libres que ya pasaron se borran solos al sincronizar el horario,
+  así que contarlos inflaba el porcentaje (hoy 25% → 50% sin que cambiara nada).
+- **Tendencia** de Ventas: se compara el período *hasta este momento* contra el mismo tramo del
+  anterior ("hoy a las 9:00 vs. ayer a las 9:00"), y un cambio que redondea a 0% no sale en
+  rojo ni en verde.
+- Contraseña mínima de 6 caracteres (el mínimo de Supabase; antes la página pedía 4 y Supabase
+  devolvía un error crudo en inglés).
+- Se dejaron sin tocar a propósito (prioridad baja): CSP; fotos con URL arbitraria (podría ser un
+  pixel de rastreo; la subida real ya existe); 30 paradas de Tab en el calendario; emojis
+  decorativos leídos por lectores de pantalla; "★ 5.0" en negocios sin reseñas; cerrar un día
+  entero borra la ausencia de una persona ya puesta; un rango de cierre de más de 60 días se
+  trunca sin avisar; zonas con horario de verano (Monterrey no tiene).
+
+**Orden de las migraciones** (solo para una base que ya existía): `migracion-horario-semanal.sql`
+→ `migracion-ventas-agenda.sql` → `migracion-endurecimiento.sql`. Las tres son idempotentes, corren
+completas o no corren (el SQL Editor las ejecuta como una sola transacción), y las dos primeras
+traen una **guarda**: si la base ya es más nueva se detienen con "ya fue superada" (antes, volver
+a correr la de horario revertía `book_slot` y `cancel_reservation`). `schema.sql` (instalación
+nueva) quedó **idéntico** al resultado de las tres migraciones: se comparó columnas, funciones
+(md5), restricciones, políticas, triggers e índices entre una base nueva y una migrada.
+
+**Acción pendiente tuya:** correr `db/migracion-endurecimiento.sql` completo en el SQL Editor de
+Supabase y luego, en la consola del sitio, `await SupabaseStore.checkSchema()` (debe decir "La
+base está al día"). Mientras no lo corras el sitio sigue funcionando (la interfaz detecta que
+faltan las reglas nuevas y se comporta como antes), solo que sin tope de citas, sin las
+validaciones nuevas en la base y con la política de borrado vieja.
+
+**Cómo se probó** (todo pasa; los guiones viven fuera del repo): unitarias de `schedule.js`
+y `validate.js` (43); 116 pruebas SQL con el rol y JWT de cada usuario, en una base migrada y
+en una nueva; 88 e2e del horario en localStorage y 87 contra Postgres con la migración, sin
+ella (la base de producción de hoy) y nueva; 18 de Ventas/asistencia contra Postgres (×3);
+15 contra una base de dos migraciones atrás; 15 de resiliencia en Supabase (500 pasajero,
+sesión en otra pestaña, reglas de la base); y en localStorage: 54 de regresión de esta
+cacería (reglas del store, XSS, datos corruptos, modales, etiquetas, registro, `.ics`), 20 de
+Ventas, 43 del dashboard, 37 del cliente, 31 de confianza, 21 de agenda, 20 de regresión y 28 de
+casos límite. Varias pruebas viejas tuvieron que cambiar porque el comportamiento cambió a
+propósito (tope/encimes, renombrar servicios, catálogo sin repetidos, contraseña de 6).
+
 ## Pendiente / decisiones abiertas
+
+**Nuevo (12 nov 2026) — necesita algo tuyo:**
+
+- **Correr `db/migracion-endurecimiento.sql`** en el SQL Editor de Supabase (ver "Cacería de bugs
+  con 7 bots") y luego `await SupabaseStore.checkSchema()` en la consola del sitio.
+- **Pagos en la app (HU-08)** — falta decidir antes de construir: (1) procesador (Mercado
+  Pago, Conekta o Stripe: los tres cobran en MXN; Mercado Pago y Conekta son los más comunes en
+  México), (2) si se cobra todo o solo un anticipo (el anticipo es lo que más reduce los "no
+  llegó"), (3) a quién llega el dinero (directo a la cuenta del negocio, o a CUPO y luego se
+  reparte) y quién absorbe comisiones y reembolsos. Requiere una cuenta tuya con datos fiscales.
+- **Notificaciones push (HU-11 completa)** — dos caminos: notificaciones del navegador (Web Push:
+  service worker + llaves VAPID + algo del lado del servidor que las envíe, p. ej. una Edge
+  Function de Supabase) o recordatorios por correo/WhatsApp 24 h y 2 h antes de la cita. El
+  correo es lo más barato de arrancar (Resend ya está como SMTP de Auth); WhatsApp necesita
+  cuenta de Meta o de un proveedor. Dime cuál prefieres.
+- **Contraseñas en este archivo:** este documento lista las de las cuentas demo y de prueba del
+  Supabase real. Si el repositorio es **público**, cualquiera puede entrar con ellas: cámbiala
+  (`demo.*@cupo.mx`), borra las cuentas de prueba (`delete from auth.users where email like
+  'prueba.%@cupo.mx';`) y quita las contraseñas de aquí.
 
 **Nuevo (11 nov 2026) — necesita algo tuyo:**
 

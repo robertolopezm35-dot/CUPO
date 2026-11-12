@@ -286,7 +286,7 @@ create policy "Los cupos son públicos (se navegan sin sesión)"
 create policy "El negocio administra solo sus propios cupos"
   on public.slots for insert with check (auth.uid() = business_id);
 create policy "El negocio borra solo sus propios cupos"
-  on public.slots for delete using (auth.uid() = business_id);
+  on public.slots for delete using (auth.uid() = business_id and status = 'available');
 create policy "El negocio edita solo sus propios cupos disponibles"
   on public.slots for update
   using (auth.uid() = business_id and status = 'available')
@@ -388,7 +388,7 @@ begin
 end;
 $$;
 
-create or replace function public.book_slot(p_slot_id uuid, p_service text default null)
+create or replace function public.book_slot(p_slot_id uuid, p_service text default null, p_expected_price numeric default null)
 returns public.reservations
 language plpgsql
 security definer
@@ -402,6 +402,8 @@ declare
   v_slot public.slots;
   v_folio text;
   v_staff_name text;
+  v_active int;
+  c_max_active constant int := 3;
 begin
   select first_name || ' ' || last_name, phone, country_code
   into v_client_name, v_client_phone, v_client_country
@@ -411,16 +413,33 @@ begin
     raise exception 'Solo un cliente puede reservar un cupo.';
   end if;
 
-  v_folio := public.generate_folio();
-
-  update public.slots
-  set status = 'booked'
+  select * into v_slot from public.slots
   where id = p_slot_id and status = 'available' and starts_at > now()
-  returning * into v_slot;
+  for update;
 
   if not found then
     raise exception 'Ese cupo ya no está disponible.';
   end if;
+
+  select count(*) into v_active
+  from public.reservations r join public.slots s on s.id = r.slot_id
+  where r.client_id = auth.uid() and s.starts_at > now();
+  if v_active >= c_max_active then
+    raise exception 'Ya tienes % citas próximas. Cancela una o espera a que pase para reservar otra.', c_max_active;
+  end if;
+
+  if exists (
+    select 1 from public.reservations r join public.slots s on s.id = r.slot_id
+    where r.client_id = auth.uid()
+      and s.starts_at < v_slot.starts_at + make_interval(mins => v_slot.duration_minutes)
+      and s.starts_at + make_interval(mins => s.duration_minutes) > v_slot.starts_at
+  ) then
+    raise exception 'Ya tienes otra cita en ese horario.';
+  end if;
+
+  v_folio := public.generate_folio();
+
+  update public.slots set status = 'booked' where id = p_slot_id;
 
   if v_slot.flexible then
     select r.service, r.price, r.original_price
@@ -430,6 +449,10 @@ begin
     update public.slots
     set service = v_slot.service, price = v_slot.price, original_price = v_slot.original_price
     where id = p_slot_id;
+  end if;
+
+  if p_expected_price is not null and round(v_slot.price) <> round(p_expected_price) then
+    raise exception 'El precio cambió a $%. Revisa y confirma de nuevo.', round(v_slot.price);
   end if;
 
   if v_slot.staff_id is not null then
@@ -468,6 +491,14 @@ declare
 begin
   if v_name = '' then
     raise exception 'Escribe el nombre del cliente.';
+  end if;
+  if char_length(v_name) > 60 then
+    raise exception 'El nombre del cliente es demasiado largo (máximo 60 caracteres).';
+  end if;
+  if v_phone is not null and length(v_phone) = 12 and left(v_phone, 2) = '52' then
+    v_phone := substr(v_phone, 3);
+  elsif v_phone is not null and length(v_phone) = 13 and left(v_phone, 3) = '521' then
+    v_phone := substr(v_phone, 4);
   end if;
   if v_phone is not null and v_phone !~ '^\d{10}$' then
     raise exception 'El teléfono debe tener 10 dígitos.';
@@ -554,7 +585,7 @@ begin
 end;
 $$;
 
-create or replace function public.reopen_slot(p_slot_id uuid)
+create or replace function public.reopen_slot(p_slot_id uuid, p_expected_folio text default null)
 returns void
 language plpgsql
 security definer
@@ -563,6 +594,11 @@ as $$
 begin
   if not exists (select 1 from public.slots where id = p_slot_id and business_id = auth.uid()) then
     raise exception 'Ese cupo no es tuyo.';
+  end if;
+
+  if p_expected_folio is not null
+     and not exists (select 1 from public.reservations where slot_id = p_slot_id and folio = p_expected_folio) then
+    raise exception 'Esa cita ya cambió: actualiza la pantalla para ver lo más reciente.';
   end if;
 
   delete from public.reservations where slot_id = p_slot_id;
@@ -613,7 +649,11 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.sales
-    where business_id = p_business_id and client_id = auth.uid()
+    where business_id = p_business_id
+      and client_id = auth.uid()
+      and status = 'completada'
+      and attendance <> 'no_asistio'
+      and coalesce(starts_at, created_at) <= now()
   );
 $$;
 
@@ -626,20 +666,29 @@ as $$
 declare
   v_review public.reviews;
   v_client_name text;
+  v_comment text := trim(coalesce(p_comment, ''));
 begin
   if p_rating is null or p_rating < 1 or p_rating > 5 then
     raise exception 'Selecciona una calificación de 1 a 5.';
   end if;
 
+  if char_length(v_comment) > 1000 then
+    raise exception 'La reseña es demasiado larga (máximo 1000 caracteres).';
+  end if;
+
+  if p_photo_url is not null and (char_length(p_photo_url) > 500 or p_photo_url !~* '^https?://\S+$') then
+    raise exception 'La foto de la reseña no es válida.';
+  end if;
+
   if not public.has_reservation_at(p_business_id) then
-    raise exception 'Solo quienes ya reservaron en este negocio pueden dejar una reseña.';
+    raise exception 'Solo quienes ya fueron atendidos en este negocio pueden dejar una reseña.';
   end if;
 
   select first_name || ' ' || last_name into v_client_name
   from public.clients where id = auth.uid();
 
   insert into public.reviews (business_id, client_id, client_name, rating, comment, photo_url)
-  values (p_business_id, auth.uid(), coalesce(v_client_name, 'Cliente'), p_rating, trim(coalesce(p_comment, '')), p_photo_url)
+  values (p_business_id, auth.uid(), coalesce(v_client_name, 'Cliente'), p_rating, v_comment, p_photo_url)
   on conflict (business_id, client_id)
   do update set rating = excluded.rating, comment = excluded.comment, photo_url = excluded.photo_url, created_at = now()
   returning * into v_review;
@@ -706,6 +755,7 @@ as $$
   join public.clients c on c.id = auth.uid()
   where f.client_id = auth.uid()
     and s.status = 'available'
+    and s.starts_at > now()
     and s.created_at > c.last_favorites_check;
 $$;
 
@@ -747,3 +797,123 @@ with check (
 create policy "Cualquiera puede ver las fotos del bucket"
 on storage.objects for select
 using (bucket_id = 'photos');
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Endurecimiento (ronda de cacería de bugs, 11 nov 2026): validaciones, rangos,
+-- triggers y límites del bucket. Ver db/migracion-endurecimiento.sql.
+-- ════════════════════════════════════════════════════════════════════════
+-- ── 0. Textos con tope y nombres no vacíos ────────────────────────────────
+alter table public.reviews drop constraint if exists reviews_comment_len;
+alter table public.reviews
+  add constraint reviews_comment_len check (char_length(comment) <= 1000) not valid;
+
+alter table public.clients drop constraint if exists clients_names_check;
+alter table public.clients
+  add constraint clients_names_check check (
+    btrim(first_name) <> '' and btrim(last_name) <> ''
+    and char_length(first_name) <= 60 and char_length(last_name) <= 60
+  ) not valid;
+
+-- ── 1. Rangos válidos en los cupos ─────────────────────────────────────────
+alter table public.slots drop constraint if exists slots_price_range;
+alter table public.slots
+  add constraint slots_price_range check (price >= 0 and price <= 100000) not valid;
+alter table public.slots drop constraint if exists slots_duration_range;
+alter table public.slots
+  add constraint slots_duration_range check (duration_minutes between 5 and 600) not valid;
+alter table public.slots drop constraint if exists slots_discount_range;
+alter table public.slots
+  add constraint slots_discount_range check (discount_pct between 0 and 100) not valid;
+
+create index if not exists slots_business_starts_idx on public.slots (business_id, starts_at);
+
+-- Un negocio no puede asignar a un cupo a alguien de OTRO negocio.
+create or replace function public.validate_slot()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.staff_id is not null
+     and not exists (select 1 from public.staff where id = new.staff_id and business_id = new.business_id) then
+    raise exception 'Esa persona no pertenece a este negocio.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_slot_trg on public.slots;
+create trigger validate_slot_trg
+  before insert or update on public.slots
+  for each row execute function public.validate_slot();
+
+-- ── 2. Un negocio no puede guardar "basura" en su perfil ───────────────────
+create or replace function public.validate_business()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  e jsonb;
+  v_price numeric;
+begin
+  if char_length(new.name) > 80 then
+    raise exception 'El nombre del negocio es demasiado largo (máximo 80 caracteres).';
+  end if;
+  if char_length(new.address) > 200 then
+    raise exception 'La dirección es demasiado larga (máximo 200 caracteres).';
+  end if;
+
+  if jsonb_typeof(new.photos) is distinct from 'array' or jsonb_array_length(new.photos) > 20 then
+    raise exception 'Las fotos deben ser una lista de hasta 20 direcciones.';
+  end if;
+  for e in select * from jsonb_array_elements(new.photos) loop
+    if jsonb_typeof(e) <> 'string' or char_length(e #>> '{}') > 500 or (e #>> '{}') !~* '^https?://\S+$' then
+      raise exception 'Cada foto debe ser una dirección web (http o https).';
+    end if;
+  end loop;
+
+  if jsonb_typeof(new.services_catalog) is distinct from 'array' or jsonb_array_length(new.services_catalog) > 60 then
+    raise exception 'El catálogo debe ser una lista de hasta 60 servicios.';
+  end if;
+  for e in select * from jsonb_array_elements(new.services_catalog) loop
+    if jsonb_typeof(e) <> 'object'
+       or jsonb_typeof(e -> 'name') is distinct from 'string'
+       or char_length(e ->> 'name') not between 1 and 80
+       or jsonb_typeof(e -> 'price') is distinct from 'number' then
+      raise exception 'Cada servicio necesita un nombre (hasta 80 caracteres) y un precio numérico.';
+    end if;
+    v_price := (e ->> 'price')::numeric;
+    if v_price < 0 or v_price > 100000 then
+      raise exception 'El precio de un servicio debe estar entre 0 y 100,000.';
+    end if;
+  end loop;
+
+  if jsonb_typeof(new.schedule) is distinct from 'object' or pg_column_size(new.schedule) > 262144 then
+    raise exception 'El horario es inválido o demasiado grande.';
+  end if;
+
+  -- La calificación inicial no se edita a mano: solo la mueven las reseñas.
+  if tg_op = 'UPDATE' and auth.uid() is not null then
+    new.rating := old.rating;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_business_trg on public.businesses;
+create trigger validate_business_trg
+  before insert or update on public.businesses
+  for each row execute function public.validate_business();
+
+-- ── 5. Fotos: solo imágenes, hasta 5 MB (el servidor ya no depende del JS del navegador) ─
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'storage' and table_name = 'buckets' and column_name = 'file_size_limit') then
+    update storage.buckets
+    set file_size_limit = 5242880,
+        allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    where id = 'photos';
+  end if;
+end $$;

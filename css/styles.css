@@ -653,6 +653,7 @@ footer {
 }
 
 .biz-name {
+  line-height: 1.3;
   font-size: 17px;
   font-weight: 800;
   margin: 0 0 2px;
@@ -1863,4 +1864,88 @@ footer .footer-links a:hover { color: var(--indigo); }
   .day-tabs { margin-bottom: 12px; }
   .toolbar { margin-bottom: 16px; }
   #guestBox .btn { padding-left: 14px; padding-right: 14px; }
+}
+
+/* ───────────────────────── Cacería de bugs: carga fallida, modales ───────────────────────── */
+.fatal-banner {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px;
+  background: var(--amber-bg); color: #78350F; padding: 14px 20px; font-size: 14px;
+}
+.fatal-banner strong { font-weight: 800; }
+.fatal-banner button { margin-left: auto; min-height: 44px; }
+html.modal-open { overflow: hidden; }
+.modal[tabindex="-1"]:focus { outline: none; }
+
+/* ───────────────────────── Cacería de bugs: accesibilidad y responsive ─────────────────────────
+   Saltar al contenido, foco visible en campos (antes `outline:none` dejaba solo un cambio de
+   borde), modo de alto contraste, textos largos sin romper el diseño, objetivos táctiles. */
+.skip-link {
+  position: absolute; left: 12px; top: -80px; z-index: 300;
+  background: var(--indigo-dark); color: #fff; padding: 12px 16px; border-radius: 10px;
+  font-weight: 700; text-decoration: none;
+}
+.skip-link:focus { top: 12px; }
+main:focus, main:focus-visible { outline: none; }
+
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--indigo) !important;
+  outline-offset: 2px;
+}
+
+/* Estado seleccionado que no depende solo del color de fondo (alto contraste / daltonismo). */
+@media (forced-colors: active) {
+  .btn, .chip, .day-tab, .area-tab, .sched-chip, .sched-day, .att-btn, .role-toggle button,
+  .period-tabs button, .fav-toggle, .cal-day, .slot, .filters-toggle, .star-picker button {
+    border: 1.5px solid ButtonText;
+  }
+  .chip.active, .day-tab.active, .area-tab.active, .sched-chip.active, .sched-day.active,
+  .role-toggle button.active, .period-tabs button.active, .fav-toggle.active, .cal-day.selected,
+  .star-picker button.active, .btn.active {
+    border: 3px solid Highlight;
+    text-decoration: underline;
+  }
+  .modal, .auth-card, .biz-card, .chart-card, .stat-card, .toast, .fatal-banner { border: 2px solid CanvasText; }
+  .bar-track, .mix-bar { border: 1px solid CanvasText; }
+  .bar-fill, .mix-fresh, .dot { forced-color-adjust: none; background: Highlight; }
+  .skip-link { border: 2px solid LinkText; }
+}
+
+/* Nombres, direcciones y reseñas largas sin espacios no deben desbordar la tarjeta. */
+.biz-name, .review-row, .review-row p, .res-info, .sale-meta, .sale-service, .rank-name,
+.agenda-who, .biz-card .address, .hist-card, .slot-detail { overflow-wrap: anywhere; min-width: 0; }
+
+/* La insignia de estado ("Por venir", "No llegó"…) también sale fuera de .sale-row (agenda del día). */
+.sale-badge {
+  display: inline-block; font-size: 11.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.3px; padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+  background: #FEF2F2; color: #B91C1C;
+}
+.sale-row .sale-badge { font-size: 11.5px; }
+.soon-badge, .discount-badge, .urgency-badge { font-size: 11.5px; }
+.cal-weekdays span, .cal-tag { font-size: 12px; }
+
+.mode-toggle { align-items: center; flex-wrap: wrap; }
+.error-msg { color: #B91C1C; }
+.slot.available:hover .price { color: #4B5563; }
+
+/* Objetivos táctiles de 44 px donde antes eran de 18–32 px. */
+.modal-close { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -10px -10px -10px 0; }
+.field input, .field select { min-height: 44px; }
+footer .footer-links a { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* Ventas: las pestañas de período se acomodan en renglones en vez de cortarse sin aviso. */
+.period-bar .period-tabs { overflow-x: visible; flex-wrap: wrap; border-radius: 22px; }
+@media (max-width: 480px) {
+  .period-bar .period-tabs { display: flex; width: 100%; }
+  .period-tabs button { padding: 9px 10px; flex: 1 1 auto; }
+}
+
+/* Al saltar a una tarjeta con scrollIntoView, el encabezado fijo no debe taparla. */
+.biz-card, .res-card, #salesList, #historyList { scroll-margin-top: 92px; }
+
+/* Pantallas muy angostas (320 px). */
+@media (max-width: 360px) {
+  .dash-header { padding-left: 12px; padding-right: 12px; }
+  #guestBox .btn { padding-left: 10px; padding-right: 10px; }
+  .split-card .card { overflow-wrap: break-word; font-size: 12.5px; }
 }

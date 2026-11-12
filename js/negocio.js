@@ -1,16 +1,38 @@
 (async function () {
-  const session = await DataStore.getSession();
+  let session;
+  try {
+    session = await DataStore.getSession();
+  } catch (err) {
+    // Un fallo de red NO es "no hay sesión": se avisa y se deja reintentar sin cerrar nada.
+    console.error("No se pudo leer la sesión:", err);
+    CupoUI.fatal("No pudimos cargar tu negocio.");
+    return;
+  }
   if (!session || session.role !== "negocio") {
     window.location.href = "auth.html?mode=login&role=negocio";
     return;
   }
+  DataStore.watchSessionChange();
 
+  // Solo se descargan los cupos de una ventana alrededor de hoy (60 días atrás, 120 adelante):
+  // con un horario denso el negocio llegaba a bajar varios MB en cada carga y en cada refresco.
+  const WINDOW_BACK_MS = 60 * 86400000;
+  const WINDOW_FWD_MS = 120 * 86400000;
   async function getBusiness() {
-    return DataStore.getBusinessById(session.id);
+    const today = DataStore.startOfDay(Date.now());
+    return DataStore.getBusinessById(session.id, { slotsFrom: today - WINDOW_BACK_MS, slotsTo: today + WINDOW_FWD_MS });
   }
 
-  let business = await getBusiness();
+  let business;
+  try {
+    business = await getBusiness();
+  } catch (err) {
+    console.error("No se pudo cargar el negocio:", err);
+    CupoUI.fatal("No pudimos cargar tu negocio.");
+    return;
+  }
   if (!business) {
+    // Solo si de verdad no existe (no por un fallo de red).
     await DataStore.clearSession();
     window.location.href = "auth.html?mode=login&role=negocio";
     return;
@@ -23,7 +45,7 @@
 
   function setHeader() {
     $("userName").textContent = business.name;
-    $("userAvatar").textContent = business.name.charAt(0).toUpperCase();
+    $("userAvatar").textContent = CupoValidate.initial(business.name);
     $("bizTitle").textContent = business.name;
   }
   setHeader();
@@ -675,7 +697,7 @@
 
   const walkinBtn = $("walkinBtn");
   async function bookWalkin() {
-    if (!detailSlotId) return;
+    if (!detailSlotId || walkinBtn.disabled) return; // Enter dos veces seguidas mandaba dos peticiones
     const clientName = $("walkinName").value.trim();
     if (!clientName) {
       showToast("Escribe el nombre del cliente.");
@@ -683,21 +705,30 @@
       return;
     }
     const walkinService = $("walkinService");
-    const phone = $("walkinPhone").value.replace(/\D/g, "");
-    if (phone && phone.length !== 10) {
-      showToast("El teléfono debe tener 10 dígitos (o déjalo vacío).");
+    // Se acepta el teléfono pegado con +52 (se normaliza a 10 dígitos).
+    const ph = CupoValidate.phone($("walkinPhone").value);
+    if (!ph.ok) {
+      showToast(ph.error);
       $("walkinPhone").focus();
       return;
     }
     walkinBtn.disabled = true;
-    const result = await DataStore.bookSlotManual(business.id, detailSlotId, {
-      clientName,
-      phone,
-      service: walkinService.hidden ? null : walkinService.value,
-    });
+    let result;
+    try {
+      result = await DataStore.bookSlotManual(business.id, detailSlotId, {
+        clientName,
+        phone: ph.phone,
+        service: walkinService.hidden ? null : walkinService.value,
+      });
+    } catch (err) {
+      console.error("bookSlotManual failed:", err);
+      result = { ok: false, error: "No se pudo agendar. Revisa tu conexión e intenta de nuevo." };
+    }
     walkinBtn.disabled = false;
     if (!result.ok) {
       showToast(result.error || "No se pudo agendar. Intenta de nuevo.");
+      // Si el cupo ya no estaba libre, el modal "Detalles del cupo" quedaría mostrando algo falso.
+      if (/ya no está disponible|ya se reservó/i.test(result.error || "")) closeSlotDetail();
       await render({ silent: true });
       return;
     }
@@ -714,10 +745,22 @@
     const slot = business.slots.find((s) => s.id === detailSlotId);
     if (!window.confirm(`¿Cancelar la cita de ${slot && slot.clientName ? slot.clientName : "este cliente"}? El cupo queda libre otra vez.`)) return;
     reopenSlotBtn.disabled = true;
-    const result = await DataStore.reopenSlot(business.id, detailSlotId);
+    // Se manda el folio de la cita que se ve en pantalla: si mientras tanto la cancelaron y otra
+    // persona reservó ese cupo, se rechaza en vez de cancelar la cita equivocada.
+    let result;
+    try {
+      result = await DataStore.reopenSlot(business.id, detailSlotId, { expectedFolio: slot && slot.folio ? slot.folio : undefined });
+    } catch (err) {
+      console.error("reopenSlot failed:", err);
+      result = { ok: false, error: "No se pudo cancelar. Revisa tu conexión e intenta de nuevo." };
+    }
     reopenSlotBtn.disabled = false;
     if (result && result.ok === false) {
       showToast(result.error || "No se pudo cancelar. Intenta de nuevo.");
+      if (/ya cambió/i.test(result.error || "")) {
+        closeSlotDetail();
+        await render({ silent: true });
+      }
       return;
     }
     closeSlotDetail();
@@ -1029,9 +1072,12 @@
     const container = $("editServicesRows");
     const row = document.createElement("div");
     row.className = "edit-row";
+    // El nombre con el que se cargó: si el negocio lo cambia al guardar, se sabe que fue un
+    // "renombrar" y se pone al día lo que lo usaba (turnos por persona, cupos).
+    row.dataset.original = name || "";
     row.innerHTML =
-      '<input type="text" class="svc-name" placeholder="Servicio" value="' + esc(name || "") + '">' +
-      '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + (price === 0 || price ? price : "") + '">' +
+      '<input type="text" class="svc-name" placeholder="Servicio" maxlength="80" value="' + esc(name || "") + '">' +
+      '<input type="number" class="svc-price" placeholder="Precio" min="0" step="10" value="' + esc(price === 0 || price ? String(price) : "") + '">' +
       '<button type="button" class="btn-link-danger remove-row" aria-label="Eliminar servicio">✕</button>';
     row.querySelector(".remove-row").addEventListener("click", () => row.remove());
     container.appendChild(row);
@@ -1149,50 +1195,75 @@
     const name = $("editName").value.trim();
     const category = $("editCategory").value;
     const address = $("editAddress").value.trim();
-    if (!name || !address) return;
-    const phone = $("editPhone").value.replace(/\D/g, "");
-    if (phone && phone.length !== 10) {
-      showToast("El teléfono del negocio debe tener 10 dígitos (o déjalo vacío).");
+    const text = CupoValidate.businessText(name, address);
+    if (!text.ok) {
+      showToast(text.error); // antes no pasaba nada y no se avisaba por qué
+      return;
+    }
+    // El teléfono se puede pegar con +52: se normaliza a 10 dígitos.
+    const ph = CupoValidate.phone($("editPhone").value);
+    if (!ph.ok) {
+      showToast(ph.error);
       $("editPhone").focus();
       return;
     }
+    const phone = ph.phone;
     const cancelHours = parseInt($("editCancelHours").value, 10);
 
     const photos = $("editPhotos").value
       .split("\n").map((s) => s.trim()).filter(Boolean);
 
-    // Un servicio sin precio quedaría reservable en $0 en los cupos del
-    // horario semanal: mejor pedirlo aquí que descubrirlo con un cliente.
-    const serviceRows = Array.from(document.querySelectorAll("#editServicesRows .edit-row"))
-      .map((row) => ({ name: row.querySelector(".svc-name").value.trim(), raw: row.querySelector(".svc-price").value.trim() }))
-      .filter((s) => s.name);
-    const unpriced = serviceRows.find((s) => s.raw === "");
-    if (unpriced) {
-      showToast(`Ponle precio a “${unpriced.name}” (o quítalo de tu catálogo).`);
+    // Un servicio sin precio quedaría reservable en $0 en los cupos del horario semanal; un
+    // precio negativo, con decimales o un nombre repetido tampoco tienen sentido: se avisa aquí.
+    const serviceRowEls = Array.from(document.querySelectorAll("#editServicesRows .edit-row"));
+    const catalogCheck = CupoValidate.catalog(serviceRowEls.map((row) => ({
+      name: row.querySelector(".svc-name").value,
+      price: row.querySelector(".svc-price").value,
+    })));
+    if (!catalogCheck.ok) {
+      showToast(catalogCheck.error);
       return;
     }
-    const servicesCatalog = serviceRows.map((s) => ({ name: s.name, price: parseInt(s.raw, 10) || 0 }));
+    const servicesCatalog = catalogCheck.catalog;
 
     const staff = Array.from(document.querySelectorAll("#editStaffRows .edit-row")).map((row) => ({
       id: row.dataset.staffId,
       name: row.querySelector(".staff-name").value.trim(),
     })).filter((s) => s.name);
 
+    // Renombres: lo que ya estaba armado con el nombre viejo (qué servicios hace cada persona, los
+    // cupos) se actualiza; antes quedaban cupos "Sin servicios" y personas con el nombre viejo.
+    const renames = { services: {}, staff: {} };
+    serviceRowEls.forEach((row) => {
+      const before = row.dataset.original;
+      const after = row.querySelector(".svc-name").value.trim();
+      if (before && after && before !== after) renames.services[before] = after;
+    });
+    staff.forEach((s) => {
+      const old = (business.staff || []).find((p) => p.id === s.id);
+      if (old && old.name !== s.name) renames.staff[s.id] = s.name;
+    });
+
     saveEditBtn.disabled = true;
-    const result = await DataStore.updateBusiness(business.id, { name, category, address, servicesCatalog, photos, staff, phone, cancelHours });
-    if (result && result.ok === false) {
-      saveEditBtn.disabled = false;
-      showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
-      return;
+    try {
+      const result = await DataStore.updateBusiness(business.id, { name: text.name, category, address: text.address, servicesCatalog, photos, staff, phone, cancelHours, renames });
+      if (result && result.ok === false) {
+        showToast(result.error || "No se pudo guardar el perfil. Intenta de nuevo.");
+        return;
+      }
+      // Quitar a alguien del equipo deja sus turnos sin dueño: el horario se
+      // vuelve a cuadrar para que no queden cupos de una persona que ya no está.
+      await DataStore.syncSchedule(business.id);
+      closeEditModal({ force: true });
+      showToast("Perfil actualizado.");
+      await render({ silent: true });
+      setHeader();
+    } catch (err) {
+      console.error("updateBusiness failed:", err);
+      showToast("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+    } finally {
+      saveEditBtn.disabled = false; // (si algo falla, el botón nunca queda muerto)
     }
-    // Quitar a alguien del equipo deja sus turnos sin dueño: el horario se
-    // vuelve a cuadrar para que no queden cupos de una persona que ya no está.
-    await DataStore.syncSchedule(business.id);
-    saveEditBtn.disabled = false;
-    closeEditModal({ force: true });
-    showToast("Perfil actualizado.");
-    await render({ silent: true });
-    setHeader();
   });
 
   // ── Vista previa: la tarjeta tal como la ve un cliente ────────────────
@@ -1281,11 +1352,11 @@
     const catalogHtml = b.servicesCatalog && b.servicesCatalog.length
       ? `<details class="catalog-details" open>
           <summary>Servicios y precios (${b.servicesCatalog.length})</summary>
-          ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${s.price}</span></div>`).join("")}
+          ${b.servicesCatalog.map((s) => `<div class="catalog-row"><span>${esc(s.name)}</span><span>$${Number(s.price) || 0}</span></div>`).join("")}
         </details>`
       : "";
 
-    const recentReviews = (b.reviews || []).slice(0, 2);
+    const recentReviews = (b.reviews || []).slice().sort((x, y) => (y.date || 0) - (x.date || 0)).slice(0, 2);
     const reviewsHtml = `<details class="catalog-details">
         <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
         ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
@@ -1295,7 +1366,7 @@
       ${photoHtml}
       <div class="biz-head">
         <div>
-          <p class="biz-name">${esc(b.name)}</p>
+          <h2 class="biz-name">${esc(b.name)}</h2>
           <div class="biz-meta">
             <span>${esc(b.address)}</span>
             <span>★ ${rating.value.toFixed(1)}</span>
@@ -1314,7 +1385,8 @@
 
   $("previewBtn").addEventListener("click", async () => {
     try {
-      business = await getBusiness();
+      const fresh = await getBusiness();
+      if (fresh) business = fresh;
     } catch (err) {
       console.error("getBusiness for preview failed:", err);
     }
@@ -1379,8 +1451,9 @@
   }
 
   async function render({ silent } = {}) {
+    let fresh;
     try {
-      business = await getBusiness();
+      fresh = await getBusiness();
     } catch (err) {
       console.error("render failed:", err);
       // Silencioso en el refresco de fondo y justo después de una acción que
@@ -1389,11 +1462,17 @@
       if (!silent) showToast("No se pudo actualizar. Revisa tu conexión.");
       return;
     }
-    if (!business) return;
+    if (!fresh) {
+      // La cuenta ya no existe de verdad: a iniciar sesión otra vez.
+      await DataStore.clearSession();
+      window.location.href = "auth.html?mode=login&role=negocio";
+      return;
+    }
+    business = fresh; // solo se reemplaza si llegó algo válido (antes un fallo dejaba la pantalla "muerta")
     // Teléfono y asistencia de cada cita viven en las ventas (solo las ve el
     // propio negocio). Si falla leerlas se conserva lo último que se tenía.
     try {
-      const sales = await DataStore.getSales(business.id);
+      const sales = await DataStore.getSales(business.id, { since: DataStore.startOfDay(Date.now()) - 120 * 86400000 });
       salesBySlot = new Map();
       sales
         .filter((v) => v.status === "completada" && v.slotId)
@@ -1448,10 +1527,16 @@
   // Igual que en el panel del cliente: si reservan un cupo desde otro
   // dispositivo mientras el negocio tiene la agenda abierta, que se entere
   // sin recargar. Se salta el ciclo si hay un modal abierto.
+  let refreshing = false; // si el servidor tarda, no se acumulan peticiones en paralelo
   setInterval(async () => {
-    if (document.hidden) return;
+    if (document.hidden || refreshing) return;
     if (modals.some((m) => m.classList.contains("show"))) return;
-    await render({ silent: true });
-    await syncIfNeeded();
+    refreshing = true;
+    try {
+      await render({ silent: true });
+      await syncIfNeeded();
+    } finally {
+      refreshing = false;
+    }
   }, 20000);
 })();

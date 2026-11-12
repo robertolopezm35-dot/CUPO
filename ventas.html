@@ -13,6 +13,7 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <header class="dash-header">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
   <div class="dash-user">
@@ -22,7 +23,7 @@
   </div>
 </header>
 
-<main class="dash-main">
+<main class="dash-main" id="main" tabindex="-1">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <h1 class="dash-title">Ventas</h1>
     <a href="negocio.html" class="btn btn-outline btn-sm">← Mi agenda</a>
@@ -30,12 +31,12 @@
   <p class="dash-sub">Cómo va tu negocio: lo que ya atendiste, lo que viene y dónde se te están yendo cupos.</p>
 
   <div class="period-bar">
-    <div class="period-tabs" id="periodTabs" role="tablist" aria-label="Período">
-      <button data-period="today" class="active" role="tab">Hoy</button>
-      <button data-period="7" role="tab">7 días</button>
-      <button data-period="30" role="tab">30 días</button>
-      <button data-period="all" role="tab">Todo</button>
-      <button data-period="custom" role="tab">📅 Rango</button>
+    <div class="period-tabs" id="periodTabs" role="group" aria-label="Período">
+      <button type="button" data-period="today" class="active" aria-pressed="true">Hoy</button>
+      <button type="button" data-period="7" aria-pressed="false">7 días</button>
+      <button type="button" data-period="30" aria-pressed="false">30 días</button>
+      <button type="button" data-period="all" aria-pressed="false">Todo</button>
+      <button type="button" data-period="custom" aria-pressed="false">📅 Rango</button>
     </div>
     <div class="range-inputs" id="rangeInputs" hidden>
       <label>Del <input type="date" id="rangeFrom"></label>
@@ -96,28 +97,28 @@
 
   <details class="how-calc">
     <summary>¿Cómo se calculan estos números?</summary>
-    <p><strong>Ingresos</strong> = citas del período que ya pasaron y a las que no se marcó “No llegó”. <strong>Por venir</strong> = citas ya reservadas que aún no ocurren. Todo se agrupa por la <strong>hora de la cita</strong>, no por cuándo se reservó. <strong>Ocupación</strong> = cupos reservados entre los cupos que publicaste en el período. <strong>No llegaron</strong> = citas que marcaste “No llegó” entre las que ya pasaron. Marca “Llegó / No llegó” en el historial para que los números sean exactos.</p>
+    <p><strong>Ingresos</strong> = citas del período que ya pasaron y a las que no se marcó “No llegó”. <strong>Por venir</strong> = citas ya reservadas que aún no ocurren. Todo se agrupa por la <strong>hora de la cita</strong>, no por cuándo se reservó. <strong>Ocupación</strong> = de los cupos <em>por venir</em> que publicaste en el período, cuántos ya tienen cita (los cupos libres que ya pasaron se retiran solos de tu agenda, así que no se pueden contar). <strong>Tendencia</strong> = el período hasta este momento contra el mismo tramo del período anterior (hoy a las 9:00 se compara con ayer a las 9:00). <strong>No llegaron</strong> = citas que marcaste “No llegó” entre las que ya pasaron. Marca “Llegó / No llegó” en el historial para que los números sean exactos.</p>
   </details>
 
   <div class="chart-card fill-card" id="fillCard">
-    <h3>💡 Cupos libres por llenar</h3>
+    <h2>💡 Cupos libres por llenar</h2>
     <p class="chart-sub">Lo que todavía puedes vender (cupos publicados que aún no empiezan)</p>
     <div id="fillInsight"></div>
   </div>
 
   <div class="chart-card">
-    <h3>Ingresos por día</h3>
+    <h2>Ingresos por día</h2>
     <div id="dayChart"></div>
   </div>
 
   <div class="two-col">
     <div class="chart-card">
-      <h3>Qué días vendes más</h3>
+      <h2>Qué días vendes más</h2>
       <p class="chart-sub">Ingresos por día de la semana</p>
       <div id="weekdayChart"></div>
     </div>
     <div class="chart-card">
-      <h3>Facturación por hora</h3>
+      <h2>Facturación por hora</h2>
       <p class="chart-sub">A qué hora son tus citas</p>
       <div id="hourChart"></div>
     </div>
@@ -125,30 +126,30 @@
 
   <div class="two-col">
     <div class="chart-card">
-      <h3>Servicios más vendidos</h3>
+      <h2>Servicios más vendidos</h2>
       <div id="serviceRank"></div>
     </div>
     <div class="chart-card" id="staffRankCard" hidden>
-      <h3>Ventas por colaborador</h3>
+      <h2>Ventas por colaborador</h2>
       <div id="staffRank"></div>
     </div>
   </div>
 
   <div class="two-col">
     <div class="chart-card">
-      <h3>👥 Clientes nuevos y recurrentes</h3>
-      <p class="chart-sub">Recurrente = ya te había visitado antes del período</p>
+      <h2>👥 Clientes nuevos y recurrentes</h2>
+      <p class="chart-sub">Recurrente = ya te había visitado antes del período (en «Todo», quien vino más de una vez)</p>
       <div id="clientMix"></div>
     </div>
     <div class="chart-card">
-      <h3>⭐ Tus mejores clientes</h3>
+      <h2>⭐ Tus mejores clientes</h2>
       <p class="chart-sub">Por lo que han gastado en el período</p>
       <div id="topClients"></div>
     </div>
   </div>
 
   <div class="chart-card discount-insight">
-    <h3>🏷️ Ventas con descuento</h3>
+    <h2>🏷️ Ventas con descuento</h2>
     <p class="chart-sub">Lo que te generan tus cupos de cancelación con descuento</p>
     <div id="discountInsight"></div>
   </div>
@@ -176,8 +177,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <script src="js/schedule.js"></script>
+<script src="js/validate.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>

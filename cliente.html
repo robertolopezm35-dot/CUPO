@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Saltar al contenido</a>
 
 <header class="dash-header">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
@@ -34,7 +35,7 @@
   </div>
 </header>
 
-<main class="dash-main">
+<main class="dash-main" id="main" tabindex="-1">
   <h1 class="dash-title" id="dashTitle">Cupos disponibles hoy</h1>
   <p class="dash-sub">Reserva al instante, sin esperar respuesta.</p>
 
@@ -49,8 +50,8 @@
 
   <div id="moreFilters" class="more-filters">
     <div class="search-row">
-      <button class="btn btn-outline btn-sm" id="sortNearbyBtn">📍 Ordenar por cercanía</button>
-      <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn">♡ Solo favoritos</button>
+      <button class="btn btn-outline btn-sm" id="sortNearbyBtn" aria-pressed="false">📍 Ordenar por cercanía</button>
+      <button class="btn btn-outline btn-sm" id="favoritesOnlyBtn" aria-pressed="false">♡ Solo favoritos</button>
     </div>
 
     <div class="search-row">
@@ -59,8 +60,8 @@
     </div>
 
     <div class="search-row">
-      <select id="serviceFilter" class="filter-select"><option value="">Todos los servicios</option></select>
-      <select id="horarioFilter" class="filter-select">
+      <select id="serviceFilter" class="filter-select" aria-label="Filtrar por servicio"><option value="">Todos los servicios</option></select>
+      <select id="horarioFilter" class="filter-select" aria-label="Filtrar por horario">
         <option value="">Todo el horario</option>
         <option value="morning">Mañana (8–12)</option>
         <option value="afternoon">Tarde (12–17)</option>
@@ -160,10 +161,12 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <script src="js/schedule.js"></script>
+<script src="js/validate.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>

@@ -20,6 +20,17 @@
 --   · businesses.cancel_hours — hasta cuántas horas antes puede cancelar el
 --     cliente sin costo (antes era solo un texto; ahora lo exige la base).
 
+-- ── Guarda: no correr esta migración si la base ya es más nueva ────────────
+-- Si ya corriste db/migracion-endurecimiento.sql, volver a correr ESTA revertiría book_slot
+-- y reopen_slot a versiones anteriores (sin tope de citas, sin precio esperado, etc.).
+do $$
+begin
+  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'book_slot' and p.pronargs = 3) then
+    raise exception 'Esta migración ya fue superada: tu base ya tiene db/migracion-endurecimiento.sql. No hace falta correrla otra vez (revertiría funciones).';
+  end if;
+end $$;
+
 -- ── Columnas nuevas ────────────────────────────────────────────────────────
 alter table public.sales
   add column if not exists starts_at timestamptz,
