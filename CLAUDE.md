@@ -942,11 +942,21 @@ a correr la de horario revertía `book_slot` y `cancel_reservation`). `schema.sq
 nueva) quedó **idéntico** al resultado de las tres migraciones: se comparó columnas, funciones
 (md5), restricciones, políticas, triggers e índices entre una base nueva y una migrada.
 
-**Acción pendiente tuya:** correr `db/migracion-endurecimiento.sql` completo en el SQL Editor de
-Supabase y luego, en la consola del sitio, `await SupabaseStore.checkSchema()` (debe decir "La
-base está al día"). Mientras no lo corras el sitio sigue funcionando (la interfaz detecta que
-faltan las reglas nuevas y se comporta como antes), solo que sin tope de citas, sin las
-validaciones nuevas en la base y con la política de borrado vieja.
+**Estado en vivo (14 nov 2026):** `db/migracion-endurecimiento.sql` ya está corrida en el Supabase
+real; `checkSchema()` responde "La base está al día" y la pasada en vivo completa (con las cuentas
+de prueba marcadas `prueba.*@cupo.mx`) pasó **140 de 140**. Lo nuevo que se confirmó contra la
+base real: la base rechaza un catálogo que no es lista, un precio en texto o negativo, fotos que no
+son lista o con `javascript:`, un nombre de 200 caracteres, un horario que no es objeto, un cupo con
+precio de $999,999 / duración de 1 o 1,000 min / descuento de 150%, y una persona de OTRO negocio
+asignada a un cupo; la calificación no se puede editar a mano; el precio que cambió se rechaza y
+avisa el vigente; una cita encimada se rechaza; la 4ª cita próxima se rechaza (tope de 3); reseñar con
+la cita por venir se rechaza; cancelar con un folio que no es el de la cita se rechaza y deja la cita;
+borrar por la API un cupo reservado no borra nada; agendar a mano con `+52 81 1234 5678` guarda
+`8112345678` y con 3 dígitos se rechaza; y el bucket `photos` rechaza un `.txt` y una imagen de
+6 MB. Además se revisó (solo lectura) que ningún negocio existente incumpla las reglas nuevas (si
+alguno lo hiciera, su dueño no podría guardar su perfil). Como el limpiador de la prueba ya no
+puede borrar cupos reservados (regla nueva), ahora cancela primero las citas. Las ventas de las
+corridas de prueba se quedan hasta borrar las cuentas con el SQL de "Borrar las cuentas de prueba".
 
 **Cómo se probó** (todo pasa; los guiones viven fuera del repo): unitarias de `schedule.js`
 y `validate.js` (43); 116 pruebas SQL con el rol y JWT de cada usuario, en una base migrada y
@@ -963,8 +973,8 @@ propósito (tope/encimes, renombrar servicios, catálogo sin repetidos, contrase
 
 **Nuevo (12 nov 2026) — necesita algo tuyo:**
 
-- **Correr `db/migracion-endurecimiento.sql`** en el SQL Editor de Supabase (ver "Cacería de bugs
-  con 7 bots") y luego `await SupabaseStore.checkSchema()` en la consola del sitio.
+- ~~Correr `db/migracion-endurecimiento.sql` en Supabase~~ — **hecho** (14 nov 2026):
+  `checkSchema()` al día y pasada en vivo 140 de 140 (ver "Cacería de bugs con 7 bots").
 - **Pagos en la app (HU-08)** — falta decidir antes de construir: (1) procesador (Mercado
   Pago, Conekta o Stripe: los tres cobran en MXN; Mercado Pago y Conekta son los más comunes en
   México), (2) si se cobra todo o solo un anticipo (el anticipo es lo que más reduce los "no
