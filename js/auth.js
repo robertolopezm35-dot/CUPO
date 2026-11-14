@@ -10,6 +10,7 @@
   const errorMsg = document.getElementById("errorMsg");
   const modeToggleText = document.getElementById("modeToggleText");
   const modeToggleBtn = document.getElementById("modeToggleBtn");
+  const $authAside = document.getElementById("authAside");
 
   const forms = {
     "cliente-register": document.getElementById("registerClienteForm"),
@@ -71,6 +72,8 @@
     const c = copy[key()];
     authTitle.textContent = c.title;
     authSub.textContent = c.sub;
+    // Un negocio que está por registrarse puede querer ver primero de qué se trata.
+    $authAside.hidden = !(role === "negocio" && mode === "register");
     modeToggleText.textContent = c.toggleText;
     modeToggleBtn.textContent = c.toggleBtn;
 
@@ -207,6 +210,7 @@
     forgotForm.classList.add("active");
     roleToggleEl.hidden = true;
     modeToggleEl.hidden = true;
+    $authAside.hidden = true;
     authTitle.textContent = "Recuperar contraseña";
     authSub.textContent = "Te mandamos un link para que elijas una contraseña nueva.";
     errorMsg.classList.remove("show");

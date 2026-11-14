@@ -15,25 +15,43 @@
 <a class="skip-link" href="#main">Saltar al contenido</a>
 
 <header class="dash-header">
-  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <a href="negocio.html" class="logo" aria-label="CUPO, ir a mi agenda"><span class="logo-badge">C</span> CUPO</a>
   <div class="dash-user">
     <span id="userName"></span>
     <div class="avatar" id="userAvatar"></div>
     <button class="btn btn-ghost btn-sm" id="logoutBtn">Salir</button>
   </div>
 </header>
+<nav class="subnav" aria-label="Secciones de tu negocio">
+  <a href="negocio.html" aria-current="page">📅 Agenda</a>
+  <a href="ventas.html">📊 Ventas</a>
+  <button type="button" id="subnavShare">🔗 Compartir</button>
+</nav>
 
 <main class="dash-main" id="main" tabindex="-1">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
     <h1 class="dash-title" id="bizTitle">Mi agenda</h1>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <a href="ventas.html" class="btn btn-primary btn-sm">📊 Ver ventas</a>
+      <button class="btn btn-primary btn-sm" id="shareBtn">🔗 Compartir mi link</button>
+      <a href="ventas.html" class="btn btn-outline btn-sm">📊 Ver ventas</a>
       <button class="btn btn-outline btn-sm" id="scheduleBtn">🗓️ Horario semanal</button>
       <button class="btn btn-outline btn-sm" id="previewBtn">👁️ Vista previa</button>
       <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
     </div>
   </div>
   <p class="dash-sub">Programa tu semana una sola vez en “Horario semanal” y CUPO publica tus cupos solo. Toca un día del calendario para ver sus citas, agendar, cancelar o cerrarlo.</p>
+
+  <section id="onboarding" class="onboarding" aria-labelledby="onboardingTitle" hidden>
+    <div class="onboarding-head">
+      <div>
+        <h2 id="onboardingTitle">Pon tu negocio a trabajar</h2>
+        <p id="onboardingSub" class="field-hint"></p>
+      </div>
+      <button type="button" class="btn-link-danger" id="onboardingHide">Ocultar</button>
+    </div>
+    <div class="progress" aria-hidden="true"><div class="progress-bar" id="onboardingBar"></div></div>
+    <ol class="onboarding-steps" id="onboardingSteps"></ol>
+  </section>
 
   <div id="scheduleNudge" class="favorites-banner" hidden>
     <span>💡 ¿Publicas cupo por cupo? Programa tu horario una vez y se repite solo todas las semanas.</span>
@@ -145,6 +163,10 @@
       <div id="slotDetailContact" class="contact-row" hidden></div>
       <div id="slotDetailEditable">
         <p id="slotDetailScheduleNote" class="policy-note" hidden>Este cupo viene de tu horario semanal. Aquí puedes ponerle descuento, fijarle un servicio, agendar a alguien o quitarlo; su hora y persona se cambian en “Horario semanal”.</p>
+
+        <div class="contact-row" id="slotShareRow">
+          <a class="btn btn-outline btn-sm" id="slotShareBtn" href="#" target="_blank" rel="noopener">📲 Avisar este cupo por WhatsApp</a>
+        </div>
 
         <div class="walkin-box">
           <label for="walkinName">¿Te llamaron o llegó alguien? Agéndalo tú</label>
@@ -309,6 +331,59 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="shareModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <h3>Comparte tu link de reservas</h3>
+      <button type="button" class="modal-close" id="closeShareBtn" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="policy-note">Tus clientes ven tus horarios libres y reservan en un toque, sin escribirte. Úsalo con quienes ya te conocen: no necesitas esperar a clientes nuevos.</p>
+      <div class="field">
+        <label for="shareLink">Tu link</label>
+        <div class="copy-row">
+          <input type="text" id="shareLink" readonly>
+          <button type="button" class="btn btn-primary btn-sm" id="shareCopyBtn">Copiar</button>
+        </div>
+      </div>
+      <div class="share-actions">
+        <a class="btn btn-outline btn-sm" id="shareWhatsappBtn" href="#" target="_blank" rel="noopener">💬 Mandar por WhatsApp</a>
+        <button type="button" class="btn btn-outline btn-sm" id="shareBioBtn">📸 Copiar texto para Instagram</button>
+      </div>
+      <div class="share-qr">
+        <div id="shareQr" class="qr-box"></div>
+        <div class="share-qr-text">
+          <strong>QR para tu local</strong>
+          <span>Pégalo en el mostrador o el espejo: tus clientes reservan su próxima cita con la cámara del celular.</span>
+          <div class="share-actions">
+            <button type="button" class="btn btn-outline btn-sm" id="shareQrDownload">⬇ Descargar QR</button>
+            <button type="button" class="btn btn-outline btn-sm" id="sharePrint">🖨️ Imprimir cartel</button>
+          </div>
+        </div>
+      </div>
+      <div class="share-fill">
+        <strong>¿Te quedaron huecos hoy?</strong>
+        <span id="shareFillInfo"></span>
+        <a class="btn btn-primary btn-sm" id="shareFillBtn" href="#" target="_blank" rel="noopener">📲 Avisar mis cupos libres de hoy por WhatsApp</a>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline btn-block" id="shareDoneBtn">Listo</button>
+    </div>
+  </div>
+</div>
+
+<div id="posterPrint" aria-hidden="true">
+  <div class="poster">
+    <div class="poster-logo"><span class="logo-badge">C</span> CUPO</div>
+    <h1 id="posterName"></h1>
+    <p class="poster-lead">Reserva tu cita al instante</p>
+    <div id="posterQr"></div>
+    <p class="poster-hint">Abre la cámara de tu celular y apunta al código</p>
+    <p class="poster-link" id="posterLink"></p>
+  </div>
+</div>
+
 <div class="modal-overlay" id="previewModal">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
@@ -332,6 +407,8 @@
 <script src="js/validate.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
+<script src="js/vendor/qrcode.js"></script>
+<script src="js/share.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

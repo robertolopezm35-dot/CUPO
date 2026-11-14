@@ -23,17 +23,34 @@
     return;
   }
   const isGuest = !client;
+  // Un negocio con sesión abierta que mira los cupos: no es "visitante" (no se le ofrece "Crear cuenta").
+  const roleMismatch = !!(session && session.role === "negocio");
   DataStore.watchSessionChange();
 
   const userBox = document.getElementById("userBox");
   const guestBox = document.getElementById("guestBox");
+  const guestLoginEl = document.getElementById("guestLogin");
+  const guestRegisterEl = document.getElementById("guestRegister");
+  // El logo lleva a "tu casa": la agenda si eres negocio, tus cupos si eres cliente, el inicio si eres visitante.
+  const logoEl = document.querySelector(".dash-header .logo");
+  if (logoEl) logoEl.href = roleMismatch ? "negocio.html" : isGuest ? "index.html" : "cliente.html";
+  const inviteLink = document.getElementById("inviteBusinessLink");
+  if (inviteLink) inviteLink.href = CupoShare.whatsappShareUrl(CupoShare.inviteBusinessMessage());
   if (isGuest) {
     userBox.hidden = true;
     guestBox.hidden = false;
-    document.getElementById("guestLogin").href = loginUrl;
-    document.getElementById("guestRegister").href = registerUrl;
+    guestLoginEl.href = loginUrl;
+    guestRegisterEl.href = registerUrl;
     document.getElementById("reservationsSection").hidden = true;
+    if (roleMismatch) {
+      guestBox.innerHTML = '<a class="btn btn-primary btn-sm" href="negocio.html">Ir a mi agenda</a><button type="button" class="btn btn-ghost btn-sm" id="roleLogoutBtn">Salir</button>';
+      document.getElementById("roleLogoutBtn").addEventListener("click", async () => {
+        await DataStore.clearSession();
+        window.location.href = "index.html";
+      });
+    }
   } else {
+    document.getElementById("navReservas").hidden = false;
     document.getElementById("userName").textContent = client.name;
     document.getElementById("userAvatar").textContent = CupoValidate.initial(client.name);
     document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -70,6 +87,7 @@
   let favoritesOnly = false;
   let soonOnly = false;
   let discountOnly = false;
+  let lastNextDayHint = null; // { offset, label }: el día más cercano con cupos cuando el elegido no tiene
   let reviewBusinessId = null;
   let reviewStars = 0;
   const PAGE_SIZE = 12;
@@ -489,10 +507,60 @@
     if (el) el.focus({ preventScroll: true });
   }
 
+  // La URL refleja lo que se está viendo (categoría, día o "próximas 2 horas", búsqueda): se puede
+  // compartir o recargar y llegas a la misma vista. Usa replaceState (no llena el historial de "Atrás")
+  // y mantiene al día los links de "Entrar/Crear cuenta" para volver exactamente aquí.
+  function syncUrl() {
+    const p = new URLSearchParams();
+    if (targetBusinessId) p.set("negocio", targetBusinessId);
+    if (isGuest && targetSlotId) p.set("slot", targetSlotId);
+    if (activeCategory !== "Todas") p.set("categoria", activeCategory);
+    if (soonOnly) p.set("cuando", "pronto");
+    else if (dayOffset > 0) p.set("dia", String(dayOffset));
+    const q = searchInput.value.trim();
+    if (q) p.set("q", q.slice(0, 80));
+    const qs = p.toString();
+    const target = location.pathname + (qs ? "?" + qs : "");
+    if (target !== location.pathname + location.search) history.replaceState(null, "", target);
+    if (isGuest && !roleMismatch) {
+      const next = encodeURIComponent(here + (qs ? "?" + qs : ""));
+      guestLoginEl.href = "auth.html?mode=login&role=cliente&next=" + next;
+      guestRegisterEl.href = "auth.html?mode=register&role=cliente&next=" + next;
+    }
+  }
+
+  // Botones de los avisos de la lista ("Ver mañana", "Ver todo el día").
+  function wireListActions(list) {
+    list.querySelectorAll("[data-jump-day]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        dayOffset = parseInt(btn.dataset.jumpDay, 10);
+        if (soonOnly) setSoonOnly(false);
+        resetPaging();
+        renderDayTabs();
+        await renderBusinesses();
+      });
+    });
+    list.querySelectorAll("[data-clear-soon]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        setSoonOnly(false);
+        resetPaging();
+        await renderBusinesses();
+      });
+    });
+  }
+
+  function updateReservasBadge(count) {
+    const badge = document.getElementById("navReservasCount");
+    if (!badge) return;
+    badge.hidden = !count;
+    badge.textContent = String(count);
+  }
+
   async function renderBusinesses({ silent } = {}) {
     const area = DataStore.AREAS.find((a) => a.id === activeArea);
     if (!area || area.comingSoon) return;
     const mySeq = ++renderSeq;
+    syncUrl();
 
     // La primera vez la lista está vacía: se muestran tarjetas "esqueleto" en
     // vez de un hueco en blanco hasta que llegan los negocios.
@@ -572,15 +640,40 @@
         });
       }
 
+      // ¿Hay algo que reservar ese día? Si no, se dice cuándo es lo más pronto y se ofrece ir ahí.
+      let hintHtml = "";
+      lastNextDayHint = null;
+      if (businesses.length && !businesses.some((b) => b.visibleSlots.some((s) => s.status === "available"))) {
+        if (soonOnly) {
+          hintHtml = '<div class="next-hint"><span>⚡ No hay cupos libres en las próximas 2 horas.</span><button type="button" class="btn btn-primary btn-sm" data-clear-soon>Ver todo el día</button></div>';
+        } else {
+          const first = businesses.map((b) => b.nextSlot).filter(Boolean).sort((a, b) => a.time - b.time)[0];
+          if (first) {
+            const offset = Math.round((DataStore.startOfDay(first.time) - DataStore.startOfDay(now)) / DAY_MS);
+            if (offset >= 0 && offset <= 6 && offset !== dayOffset) {
+              const owner = businesses.find((b) => b.nextSlot === first);
+              lastNextDayHint = { offset, label: dayWord(first.time) };
+              hintHtml = `<div class="next-hint"><span>${dayOffset === 0 ? "Hoy ya" : esc(dayLabel(dayOffset)) + " no"} hay cupos libres. Lo más pronto: <strong>${esc(dayWord(first.time))} ${esc(first.label)}</strong>${owner ? " en " + esc(owner.name) : ""}.</span><button type="button" class="btn btn-primary btn-sm" data-jump-day="${offset}">Ver ${esc(dayLabel(offset))}</button></div>`;
+            }
+          }
+        }
+      }
+
       if (businesses.length === 0) {
         lastListHtml = null;
         moreBusinessesBtn.hidden = true;
         const filtered = soonOnly || discountOnly || serviceFilter || horarioFilter || searchTerm || favoritesOnly || activeCategory !== "Todas";
+        const canNextDay = !soonOnly && dayOffset < 6;
         list.innerHTML = `<div class="empty-state">
-          <strong>${soonOnly ? "No hay cupos libres en las próximas 2 horas." : "No encontramos negocios con esos filtros."}</strong>
-          <p>${soonOnly ? "Prueba con todo el día o con mañana: se publican cupos nuevos todo el tiempo." : "Prueba con otra categoría, otro día o quita algún filtro."}</p>
-          ${filtered ? '<button type="button" class="btn btn-outline btn-sm" id="clearFiltersBtn">Quitar filtros</button>' : ""}
+          <strong>${soonOnly ? "No hay cupos libres en las próximas 2 horas." : filtered ? "No encontramos negocios con esos filtros." : "Todavía no hay negocios en esta categoría."}</strong>
+          <p>${soonOnly ? "Prueba con todo el día o con mañana: se publican cupos nuevos todo el tiempo." : filtered ? "Prueba con otra categoría, otro día o quita algún filtro." : "Estamos sumando negocios. Mientras, prueba otra categoría o invita al tuyo con el botón de abajo."}</p>
+          <div class="empty-actions">
+            ${canNextDay && filtered ? `<button type="button" class="btn btn-primary btn-sm" data-jump-day="${dayOffset + 1}">Ver ${esc(dayLabel(dayOffset + 1))}</button>` : ""}
+            ${soonOnly ? '<button type="button" class="btn btn-primary btn-sm" data-clear-soon>Ver todo el día</button>' : ""}
+            ${filtered ? '<button type="button" class="btn btn-outline btn-sm" id="clearFiltersBtn">Quitar filtros</button>' : ""}
+          </div>
         </div>`;
+        wireListActions(list);
         const clearBtn = document.getElementById("clearFiltersBtn");
         if (clearBtn) clearBtn.addEventListener("click", async () => { resetAllFilters(); await renderBusinesses(); });
         return;
@@ -597,7 +690,7 @@
       moreBusinessesBtn.hidden = shown.length >= total;
       moreBusinessesBtn.textContent = "Ver más negocios (" + (total - shown.length) + ")";
 
-      const html = shown.map((b) => safeCard(b, () => {
+      const html = hintHtml + shown.map((b) => safeCard(b, () => {
         const slotsForDay = b.visibleSlots;
         // Igual que "Solo quedan 2 habitaciones" en Booking.com — refuerza que
         // estos son cupos de último momento que se pueden acabar, no un
@@ -688,6 +781,7 @@
       list.innerHTML = html;
       lastListHtml = html;
       restoreUiState(list, uiState);
+      wireListActions(list);
 
       list.querySelectorAll(".slot.available").forEach((el) => {
         const go = () => startBooking(el.dataset.business, el.dataset.slot);
@@ -722,13 +816,9 @@
       // que "compartir este lugar" en OpenTable/Booksy.
       list.querySelectorAll("[data-share]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const url = location.origin + location.pathname + "?negocio=" + btn.dataset.share;
-          try {
-            await navigator.clipboard.writeText(url);
-            showToast("Link copiado.");
-          } catch {
-            showToast(url);
-          }
+          const url = CupoShare.bookingLink(btn.dataset.share);
+          const copied = await CupoShare.copyText(url);
+          showToast(copied ? "Link copiado." : url);
         });
       });
 
@@ -760,6 +850,10 @@
 
   // ── Reservar ─────────────────────────────────────────────────────────────
   async function startBooking(businessId, slotId) {
+    if (roleMismatch) {
+      showToast("Tienes la sesión de un negocio abierta. Para reservar, cierra sesión y entra como cliente.");
+      return;
+    }
     if (isGuest) {
       window.location.href = bookingAuthUrl(businessId, slotId);
       return;
@@ -946,6 +1040,7 @@
     }
     const reservations = fresh ? fresh.reservations : [];
     if (!reservations.length) {
+      updateReservasBadge(0);
       lastReservationsHtml = null;
       el.innerHTML = '<div class="empty-state">Todavía no tienes reservas. Elige un cupo arriba y aparecerá aquí con todo lo que necesitas para llegar.</div>';
       return;
@@ -976,6 +1071,7 @@
     const isUpcoming = (r) => !r.time ? false : r.time + (r.duration || 45) * 60000 > now;
     const upcoming = withTime.filter(isUpcoming).sort((a, b) => a.time - b.time);
     const past = withTime.filter((r) => !isUpcoming(r)).sort((a, b) => (b.time || 0) - (a.time || 0));
+    updateReservasBadge(upcoming.length);
 
     const resHtml =
       (upcoming.length
@@ -1061,6 +1157,14 @@
     folioModal.classList.remove("show");
   }
   document.getElementById("folioOkBtn").addEventListener("click", closeFolio);
+  document.getElementById("folioReservasBtn").addEventListener("click", () => {
+    closeFolio();
+    const section = document.getElementById("reservationsSection");
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    const heading = section.querySelector("h2");
+    // Se espera a que el modal termine de cerrar: ui.js regresa el foco a quien lo abrió.
+    if (heading) setTimeout(() => { heading.setAttribute("tabindex", "-1"); heading.focus({ preventScroll: true }); }, 80);
+  });
   document.getElementById("closeFolioBtn").addEventListener("click", closeFolio);
   folioModal.addEventListener("click", (e) => { if (e.target === folioModal) closeFolio(); });
 
@@ -1076,6 +1180,31 @@
   const targetSlotId = params.get("slot");
   if (targetBusinessId) visibleCount = 9999; // que la tarjeta señalada no quede detrás de "Ver más"
 
+  // Rutas con filtros por URL: cliente.html?categoria=Barbería&cuando=pronto&dia=1&q=corte
+  // (el landing enlaza directo a una vista ya filtrada; y cualquier vista se puede compartir).
+  let explicitDay = false;
+  {
+    const wanted = params.get("categoria");
+    if (wanted) {
+      const match = (DataStore.AREAS.find((a) => a.id === activeArea) || { categories: [] }).categories
+        .find((c) => CupoValidate.fold(c) === CupoValidate.fold(wanted));
+      if (match) activeCategory = match;
+    }
+    if (params.get("cuando") === "pronto") {
+      explicitDay = true;
+      setSoonOnly(true);
+    } else {
+      const dia = params.get("dia");
+      if (dia === "manana") { dayOffset = 1; explicitDay = true; }
+      else if (dia && /^[0-6]$/.test(dia)) { dayOffset = parseInt(dia, 10); explicitDay = true; }
+    }
+    const q = (params.get("q") || "").trim().slice(0, 80);
+    if (q) {
+      searchInput.value = q;
+      searchTerm = CupoValidate.fold(q);
+    }
+  }
+
   renderAreaTabs();
   renderDayTabs();
   renderCategoryChips();
@@ -1083,7 +1212,8 @@
 
   // Si traen un cupo elegido, se abre en el día de ese cupo.
   let bookAfterLoad = null;
-  if (targetBusinessId && targetSlotId && !isGuest) {
+  let highlightSlotId = null;
+  if (targetBusinessId && targetSlotId) {
     try {
       const b = await DataStore.getBusinessById(targetBusinessId);
       const slot = b && b.slots.find((s) => s.id === targetSlotId);
@@ -1091,9 +1221,11 @@
         const offset = Math.round((DataStore.startOfDay(slot.time) - DataStore.startOfDay(Date.now())) / DAY_MS);
         if (offset >= 0 && offset <= 6) {
           dayOffset = offset;
+          explicitDay = true;
           renderDayTabs();
         }
-        bookAfterLoad = { businessId: targetBusinessId, slotId: targetSlotId };
+        if (isGuest || roleMismatch) highlightSlotId = targetSlotId;
+        else bookAfterLoad = { businessId: targetBusinessId, slotId: targetSlotId };
       } else {
         showToast("Ese cupo ya no está disponible. Mira los otros horarios del negocio.");
       }
@@ -1104,6 +1236,26 @@
 
   await renderBusinesses();
   await renderReservations();
+
+  // Hoy ya no queda nada: en vez de dejar una pantalla vacía, se muestra el día más cercano con cupos.
+  if (!explicitDay && !targetBusinessId && !soonOnly && dayOffset === 0 && lastNextDayHint && lastNextDayHint.offset > 0) {
+    const hint = lastNextDayHint;
+    dayOffset = hint.offset;
+    renderDayTabs();
+    showToast("Hoy ya no hay cupos libres: te mostramos " + hint.label.toLowerCase() + ".");
+    await renderBusinesses();
+  }
+
+  if (highlightSlotId) {
+    const chip = document.querySelector(`.slot[data-slot="${CSS.escape(highlightSlotId)}"]`);
+    if (chip && chip.classList.contains("available")) {
+      chip.scrollIntoView({ behavior: "smooth", block: "center" });
+      chip.classList.add("highlight");
+      showToast(roleMismatch ? "Este cupo te esperaba, pero tienes la sesión de un negocio." : "Toca el cupo para reservarlo: te pedimos una cuenta rápida y regresas aquí.");
+    } else {
+      showToast("Ese cupo ya no está disponible. Mira los otros horarios del negocio.");
+    }
+  }
 
   if (targetBusinessId) {
     const card = document.querySelector(`.biz-card[data-business-id="${CSS.escape(targetBusinessId)}"]`);

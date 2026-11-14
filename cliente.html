@@ -23,7 +23,7 @@
 <a class="skip-link" href="#main">Saltar al contenido</a>
 
 <header class="dash-header">
-  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <a href="index.html" class="logo" aria-label="CUPO, inicio"><span class="logo-badge">C</span> CUPO</a>
   <div class="dash-user" id="userBox">
     <span id="userName"></span>
     <div class="avatar" id="userAvatar"></div>
@@ -34,6 +34,11 @@
     <a class="btn btn-primary btn-sm" id="guestRegister" href="auth.html?mode=register&amp;role=cliente">Crear cuenta</a>
   </div>
 </header>
+<nav class="subnav" aria-label="Secciones">
+  <a href="cliente.html" aria-current="page">🔎 Cupos</a>
+  <a href="#reservationsSection" id="navReservas" hidden>📋 Mis reservas <span class="subnav-count" id="navReservasCount" hidden></span></a>
+  <a href="negocios.html">🏪 Para negocios</a>
+</nav>
 
 <main class="dash-main" id="main" tabindex="-1">
   <h1 class="dash-title" id="dashTitle">Cupos disponibles hoy</h1>
@@ -83,6 +88,12 @@
   <div id="businessList"></div>
   <div class="more-wrap"><button type="button" class="btn btn-outline" id="moreBusinessesBtn" hidden>Ver más negocios</button></div>
 
+  <div class="invite-box">
+    <strong>¿No ves tu barbería o salón favorito?</strong>
+    <span>CUPO crece con los negocios que se suman. Invita al tuyo y, cuando se registre, podrás reservar ahí.</span>
+    <a class="btn btn-outline btn-sm" id="inviteBusinessLink" href="negocios.html" target="_blank" rel="noopener">💬 Invitarlo por WhatsApp</a>
+  </div>
+
   <div style="margin-top:40px" id="reservationsSection">
     <h2 class="section-title" style="font-size:22px;text-align:left">Mis reservas</h2>
     <div id="reservationsList"></div>
@@ -125,7 +136,8 @@
       <p id="folioText"></p>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary btn-block" id="folioOkBtn">Entendido</button>
+      <button class="btn btn-outline btn-block" id="folioOkBtn">Entendido</button>
+      <button class="btn btn-primary btn-block" id="folioReservasBtn">Ver mis reservas</button>
     </div>
   </div>
 </div>
@@ -168,6 +180,7 @@
 <script src="js/validate.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
+<script src="js/share.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-store.js"></script>

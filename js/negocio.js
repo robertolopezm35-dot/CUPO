@@ -597,6 +597,10 @@
 
     if (available) {
       $("slotDetailTitle").textContent = "Detalles del cupo";
+      // Avisar este cupo por WhatsApp: solo si todavía no empieza y se puede reservar.
+      const shareable = slot.time > Date.now() && S.describeSlot(business, slot).bookable;
+      $("slotShareRow").hidden = !shareable;
+      if (shareable) $("slotShareBtn").href = CupoShare.whatsappShareUrl(CupoShare.slotMessage(business, slot));
       const generated = !!slot.scheduleKey;
       $("slotDetailScheduleNote").hidden = !generated;
       populateServiceOptions(editSlotService, slot.flexible ? FLEX : (slot.service || ""));
@@ -1450,6 +1454,129 @@
     }
   }
 
+  // ── Primeros pasos y kit para compartir ────────────────────────────────
+  // Lo que más pesa para que un negocio se quede es llegar rápido a su primer valor: servicios,
+  // horario, teléfono y compartir el link con SUS clientes (funciona desde el día 1, sin esperar
+  // a que llegue gente nueva). El avance se calcula de lo que ya hay guardado.
+  const lsGet = (key) => { try { return localStorage.getItem(key); } catch (err) { return null; } };
+  const lsSet = (key, value) => { try { localStorage.setItem(key, value); } catch (err) { /* sin almacenamiento */ } };
+  const sharedKey = () => "cupo_shared_" + business.id;
+  const onboardingHiddenKey = () => "cupo_onb_hidden_" + business.id;
+
+  function renderOnboarding() {
+    const card = $("onboarding");
+    const catalogOk = (business.servicesCatalog || []).some((svc) => Number(svc.price) > 0);
+    const scheduleOk = S.activeRules(business).length > 0;
+    const phoneOk = !!business.phone;
+    const sharedOk = lsGet(sharedKey()) === "1" || business.slots.some((sl) => sl.status === "booked");
+    const steps = [
+      { done: catalogOk, act: "edit", title: "Agrega tus servicios y precios", hint: "De ahí salen el servicio y el precio de cada cupo.", btn: "Agregar servicios" },
+      { done: scheduleOk, act: "schedule", title: "Programa tu horario semanal", hint: "Lo defines una vez y tus cupos se publican solos cada semana.", btn: "Programar horario" },
+      { done: phoneOk, act: "phone", title: "Pon tu teléfono o WhatsApp", hint: "Para que tus clientes te contacten con un toque desde su reserva.", btn: "Agregar teléfono" },
+      { done: sharedOk, act: "share", title: "Comparte tu link con tus clientes", hint: "Con tu link o QR reservan sin escribirte. Funciona desde hoy con quienes ya te conocen.", btn: "Compartir" },
+    ];
+    const done = steps.filter((st) => st.done).length;
+    if (done === steps.length || lsGet(onboardingHiddenKey()) === "1") {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    $("onboardingSub").textContent = done + " de " + steps.length + " pasos listos";
+    $("onboardingBar").style.width = Math.round((done / steps.length) * 100) + "%";
+    $("onboardingSteps").innerHTML = steps.map((st, i) => `
+      <li class="onb-step ${st.done ? "done" : "todo"}">
+        <span class="onb-check" aria-hidden="true">${st.done ? "✓" : i + 1}</span>
+        <div class="onb-text"><strong>${st.done ? '<span class="sr-only">Listo: </span>' : ""}${esc(st.title)}</strong><span>${esc(st.hint)}</span></div>
+        ${st.done ? "" : `<button type="button" class="btn btn-primary btn-sm" data-onb="${st.act}">${esc(st.btn)}</button>`}
+      </li>`).join("");
+  }
+
+  $("onboardingSteps").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-onb]");
+    if (!btn) return;
+    const act = btn.dataset.onb;
+    if (act === "schedule") $("scheduleBtn").click();
+    else if (act === "share") openShare();
+    else {
+      $("editProfileBtn").click();
+      if (act === "phone") setTimeout(() => { const f = $("editPhone"); if (f) f.focus(); }, 80);
+    }
+  });
+  $("onboardingHide").addEventListener("click", () => {
+    lsSet(onboardingHiddenKey(), "1");
+    $("onboarding").hidden = true;
+    $("scheduleNudge").hidden = S.activeRules(business).length > 0;
+  });
+
+  const shareModal = $("shareModal");
+  function markShared() {
+    if (lsGet(sharedKey()) !== "1") {
+      lsSet(sharedKey(), "1");
+      renderOnboarding();
+    }
+  }
+  function closeShare() { shareModal.classList.remove("show"); }
+
+  function openShare() {
+    const link = CupoShare.bookingLink(business.id);
+    $("shareLink").value = link;
+    $("shareWhatsappBtn").href = CupoShare.whatsappShareUrl(CupoShare.inviteMessage(business));
+    const qr = CupoShare.qrSvg(link, { size: 168 });
+    $("shareQr").innerHTML = qr || '<span class="field-hint">No se pudo generar el QR en este navegador.</span>';
+    $("shareQrDownload").disabled = !qr;
+    $("sharePrint").disabled = !qr;
+    $("posterName").textContent = business.name;
+    $("posterQr").innerHTML = CupoShare.qrSvg(link, { size: 360 });
+    $("posterLink").textContent = link;
+
+    // Huecos de hoy: se arma el mensaje con lo que de verdad sigue libre.
+    const now = Date.now();
+    const [dayStart, dayEnd] = dayRange(todayKey());
+    const free = business.slots
+      .filter((sl) => sl.status === "available" && sl.time > now && sl.time >= dayStart && sl.time < dayEnd && S.describeSlot(business, sl).bookable)
+      .sort((a, b) => a.time - b.time);
+    const fillBtn = $("shareFillBtn");
+    if (free.length) {
+      $("shareFillInfo").textContent = "Hoy tienes " + free.length + " cupo" + (free.length === 1 ? "" : "s") + " libre" + (free.length === 1 ? "" : "s") + ". Mándalos a tus estados o grupos y llénalos antes de que pasen.";
+      fillBtn.hidden = false;
+      fillBtn.href = CupoShare.whatsappShareUrl(CupoShare.slotsMessage(business, free));
+    } else {
+      $("shareFillInfo").textContent = "Hoy ya no te quedan cupos libres. Cuando se libere uno (una cancelación, un descuento), aquí podrás avisarlo con un toque.";
+      fillBtn.hidden = true;
+    }
+    shareModal.classList.add("show");
+  }
+
+  $("shareBtn").addEventListener("click", openShare);
+  $("subnavShare").addEventListener("click", openShare);
+  $("closeShareBtn").addEventListener("click", closeShare);
+  $("shareDoneBtn").addEventListener("click", closeShare);
+  shareModal.addEventListener("click", (e) => { if (e.target === shareModal) closeShare(); });
+  $("shareCopyBtn").addEventListener("click", async () => {
+    const ok = await CupoShare.copyText($("shareLink").value);
+    if (!ok) $("shareLink").select();
+    showToast(ok ? "Link copiado. Pégalo donde quieras." : "Selecciona el link y cópialo manualmente.");
+    markShared();
+  });
+  $("shareBioBtn").addEventListener("click", async () => {
+    const ok = await CupoShare.copyText(CupoShare.bioText(business));
+    showToast(ok ? "Texto copiado. Pégalo en la descripción de tu Instagram." : "No se pudo copiar. Usa el link de arriba.");
+    markShared();
+  });
+  $("shareWhatsappBtn").addEventListener("click", markShared);
+  $("shareFillBtn").addEventListener("click", markShared);
+  $("slotShareBtn").addEventListener("click", markShared);
+  $("shareQrDownload").addEventListener("click", async () => {
+    const blob = await CupoShare.qrPngBlob($("shareLink").value, 1024);
+    if (!blob) { showToast("No se pudo generar la imagen."); return; }
+    CupoShare.downloadBlob("qr-cupo-" + CupoShare.slugForFile(business.name) + ".png", blob);
+    markShared();
+  });
+  $("sharePrint").addEventListener("click", () => {
+    markShared();
+    setTimeout(() => window.print(), 60);
+  });
+
   async function render({ silent } = {}) {
     let fresh;
     try {
@@ -1482,7 +1609,9 @@
       console.error("getSales failed:", err);
     }
     buildDayIndex();
-    $("scheduleNudge").hidden = S.activeRules(business).length > 0;
+    renderOnboarding();
+    // El aviso de "programa tu horario" solo sale si la lista de primeros pasos no está visible (no repetir).
+    $("scheduleNudge").hidden = S.activeRules(business).length > 0 || !$("onboarding").hidden;
     renderStats();
     renderCalendar();
     renderDay();
@@ -1514,12 +1643,19 @@
   await render();
   await syncIfNeeded();
 
-  const modals = [slotDetailModal, editModal, scheduleModal, closeDayModal, previewModal];
+  // negocio.html?compartir=1 (desde "Compartir" en Ventas) abre directo el kit para compartir.
+  if (new URLSearchParams(location.search).get("compartir") === "1") {
+    history.replaceState(null, "", location.pathname);
+    openShare();
+  }
+
+  const modals = [slotDetailModal, editModal, scheduleModal, closeDayModal, previewModal, shareModal];
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closeSlotDetail();
     closeCloseDay();
     closePreview();
+    closeShare();
     if (editModal.classList.contains("show")) closeEditModal();
     if (scheduleModal.classList.contains("show")) closeSchedule();
   });

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUPO para negocios — Llena los huecos de tu agenda</title>
+<meta name="description" content="Publica tus cupos libres, comparte tu link de reservas por WhatsApp e Instagram y llena los huecos que dejan las cancelaciones. Para barberías, salones, spas y estéticas. Hoy no se cobra por usar CUPO.">
+<link rel="canonical" href="https://mycupo.com/negocios.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CUPO">
+<meta property="og:locale" content="es_MX">
+<meta property="og:title" content="CUPO para negocios — Llena los huecos de tu agenda">
+<meta property="og:description" content="Un link y un QR para que tus clientes reserven sin escribirte, y cupos de último momento para llenar los huecos del día.">
+<meta property="og:url" content="https://mycupo.com/negocios.html">
+<meta property="og:image" content="https://mycupo.com/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Saltar al contenido</a>
+
+<nav class="navbar">
+  <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
+  <div class="nav-links">
+    <a href="cliente.html" class="btn btn-ghost btn-sm">Soy cliente</a>
+    <a href="auth.html?mode=login&amp;role=negocio" class="btn btn-ghost btn-sm">Iniciar sesión</a>
+    <a href="auth.html?mode=register&amp;role=negocio" class="btn btn-primary btn-sm">Registrar mi negocio</a>
+  </div>
+</nav>
+
+<main id="main" tabindex="-1">
+<header class="hero">
+  <div class="eyebrow">Para barberías, salones, spas y estéticas</div>
+  <h1>Cada hueco en tu agenda es <span>dinero que se va</span>. Vuelve a llenarlo.</h1>
+  <p>Publica tus cupos libres y deja que clientes cerca de ti los reserven al instante. Y úsalo desde hoy con quienes ya te conocen: un link para WhatsApp e Instagram y un QR para tu local.</p>
+  <div class="hero-actions">
+    <a href="auth.html?mode=register&amp;role=negocio" class="btn btn-primary">Registrar mi negocio</a>
+    <a href="#como" class="btn btn-outline">Ver cómo funciona</a>
+  </div>
+  <p class="hero-note">Se configura en pocos pasos, desde el celular. Hoy no se cobra por usar CUPO.</p>
+</header>
+
+<section class="section" id="calculadora" style="background:var(--white)">
+  <div class="container">
+    <h2 class="section-title">¿Cuánto te cuesta un hueco?</h2>
+    <p class="section-sub">Pon tus propios números. Es una cuenta para que veas el tamaño del problema, no una promesa.</p>
+    <div class="calc">
+      <form class="calc-form" id="calcForm" onsubmit="return false">
+        <div class="field">
+          <label for="calcGaps">Huecos o cancelaciones por semana</label>
+          <input type="number" id="calcGaps" value="6" min="0" max="500" step="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="calcTicket">Lo que cobras en promedio por cita ($)</label>
+          <input type="number" id="calcTicket" value="250" min="0" max="100000" step="10" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="calcFill">¿Cuántos de cada 10 huecos crees llenar?</label>
+          <input type="range" id="calcFill" value="3" min="0" max="10" step="1">
+          <output id="calcFillOut" for="calcFill">3 de cada 10</output>
+        </div>
+      </form>
+      <div class="calc-result" id="calcResult" role="status" aria-live="polite">
+        <div class="calc-line"><span>Lo que dejas de ganar al mes</span><strong id="calcLoss">$0</strong></div>
+        <div class="calc-line good"><span>Lo que podrías recuperar al mes</span><strong id="calcGain">$0</strong></div>
+        <div class="calc-line"><span>En un año</span><strong id="calcYear">$0</strong></div>
+        <p class="field-hint" id="calcNote"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="como">
+  <div class="container">
+    <h2 class="section-title">Cómo funciona</h2>
+    <p class="section-sub">Lo configuras una sola vez; después los cupos se publican solos.</p>
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-icon">1</div>
+        <h3>Registra tu negocio</h3>
+        <p>Nombre, categoría y dirección. Agrega tus servicios con su precio y, si tienes equipo, a cada persona.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">2</div>
+        <h3>Programa tu semana</h3>
+        <p>Dices qué días y a qué horas atiende cada quien, y cada cuánto es una cita. CUPO publica tus cupos de las próximas semanas.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">3</div>
+        <h3>Comparte y llena</h3>
+        <p>Manda tu link o tu QR, y avisa por WhatsApp los cupos que te queden libres. También los ven los clientes que buscan en CUPO.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background:var(--white)">
+  <div class="container">
+    <h2 class="section-title">Te sirve desde el primer día</h2>
+    <p class="section-sub">CUPO está empezando. No tienes que esperar a que llegue gente nueva: tu agenda ya funciona con los clientes que tienes.</p>
+    <div class="trust-row">
+      <div class="trust-item"><div class="ico">🔗</div><strong>Tu link de reservas</strong><span>Un solo link para tu WhatsApp, tu Instagram y tu Google. Tus clientes ven tus horarios libres y reservan sin escribirte.</span></div>
+      <div class="trust-item"><div class="ico">🖨️</div><strong>QR para tu local</strong><span>Imprime un cartel con tu QR y ponlo en el mostrador: tus clientes reservan su próxima cita con la cámara del celular.</span></div>
+      <div class="trust-item"><div class="ico">📲</div><strong>Avisa tus huecos por WhatsApp</strong><span>Con un toque armas el mensaje con los cupos que te quedan hoy y lo mandas a tus estados o grupos.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Así se ve tu panel</h2>
+    <p class="section-sub">Vista de ejemplo con datos de demostración.</p>
+    <div class="shots">
+      <figure>
+        <img src="assets/negocio-agenda.jpg" alt="Panel de agenda de un negocio en CUPO: calendario mensual con citas y cupos libres, y el detalle del día" loading="lazy" width="1180" height="760">
+        <figcaption>Tu agenda: calendario, citas del día y cupos libres.</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/negocio-ventas.jpg" alt="Dashboard de ventas de un negocio en CUPO con ingresos, citas atendidas, ocupación y gráficas" loading="lazy" width="1180" height="760">
+        <figcaption>Tus ventas: qué se vende, a qué hora y cuánto te queda por llenar.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background:var(--white)">
+  <div class="container">
+    <h2 class="section-title">Tú tienes el control</h2>
+    <div class="trust-row">
+      <div class="trust-item"><div class="ico">💵</div><strong>Tus precios y descuentos</strong><span>Tú pones el precio de cada servicio y decides si un cupo de último momento lleva descuento.</span></div>
+      <div class="trust-item"><div class="ico">⏱️</div><strong>Tu política de cancelación</strong><span>Defines hasta cuántas horas antes puede cancelar el cliente. Ellos la ven antes de reservar.</span></div>
+      <div class="trust-item"><div class="ico">📞</div><strong>Conoces a quien viene</strong><span>Ves el nombre y el teléfono de cada cliente, marcas si llegó o no, y agendas a mano a quien te llama.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Preguntas frecuentes</h2>
+    <div class="faq">
+      <details><summary>¿Cuánto cuesta?</summary><p>Hoy no se cobra por usar CUPO ni por las reservas. Los clientes pagan directamente en tu negocio, como hasta ahora.</p></details>
+      <details><summary>¿Tengo que dejar mi WhatsApp?</summary><p>No. CUPO se suma a lo que ya haces: mandas tu link y tus cupos libres por WhatsApp, y tus clientes reservan sin tener que escribirte cada vez.</p></details>
+      <details><summary>No soy bueno con la tecnología, ¿me va a costar trabajo?</summary><p>Son pocos pasos y funciona desde el celular. El panel te va mostrando qué sigue (servicios, horario, teléfono y compartir tu link) y cuánto llevas.</p></details>
+      <details><summary>¿Y si un cliente reserva y no llega?</summary><p>Marcas “No llegó” en tu historial para llevar la cuenta, y cada cliente ve tu política de cancelación antes de confirmar. Los recordatorios automáticos todavía no están disponibles.</p></details>
+      <details><summary>¿Cómo cobro?</summary><p>Como siempre: el cliente paga en tu negocio, con los medios que tú aceptes. CUPO no toca tu dinero.</p></details>
+      <details><summary>¿Qué datos del cliente veo?</summary><p>Su nombre y su teléfono, para atenderlo. Lee el <a href="privacidad.html" style="color:var(--indigo);text-decoration:underline">Aviso de privacidad</a>.</p></details>
+      <details><summary>¿Puedo cerrar días o irme de vacaciones?</summary><p>Sí. Cierras un día o un rango de días, de todo el negocio o de una sola persona, y dejan de publicarse cupos.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="section" style="background:var(--white)">
+  <div class="container" style="text-align:center">
+    <h2 class="section-title">Empieza hoy, a tu ritmo</h2>
+    <p class="section-sub">Regístrate, comparte tu link con tus clientes y mira cómo se llena tu agenda.</p>
+    <div class="hero-actions">
+      <a href="auth.html?mode=register&amp;role=negocio" class="btn btn-primary">Registrar mi negocio</a>
+      <a href="cliente.html" class="btn btn-outline">Soy cliente: ver cupos</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="footer-links"><a href="index.html">Inicio</a><a href="cliente.html">Buscar un cupo</a><a href="terminos.html">Términos y condiciones</a><a href="privacidad.html">Aviso de privacidad</a></div>
+  &copy; 2026 CUPO · Monterrey, N.L. · Trabajo decente y crecimiento económico (ODS 8)
+</footer>
+
+<script src="js/ui.js"></script>
+<script src="js/negocios.js"></script>
+</body>
+</html>

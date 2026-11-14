@@ -1949,3 +1949,132 @@ footer .footer-links a { display: inline-flex; align-items: center; min-height: 
   #guestBox .btn { padding-left: 10px; padding-right: 10px; }
   .split-card .card { overflow-wrap: break-word; font-size: 12.5px; }
 }
+
+/* ───────────────────────── Ronda 3: rutas visibles, primeros pasos y compartir ─────────────────────────
+   Navegación siempre a la vista (la oculta se descubre peor que la visible), checklist de primeros
+   pasos del negocio, kit para compartir (link, QR, WhatsApp) y cartel imprimible. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+.subnav {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  padding: 8px 20px; background: var(--white); border-bottom: 1px solid var(--gray-light);
+}
+.subnav a, .subnav button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px;
+  border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--gray);
+  background: transparent; text-decoration: none; border: 0; cursor: pointer;
+}
+.subnav a:hover, .subnav button:hover { background: var(--bg); color: var(--navy); }
+.subnav [aria-current="page"] { background: var(--indigo-light); color: var(--indigo-dark); }
+.subnav .subnav-count {
+  display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 999px; font-size: 12px;
+  line-height: 18px; text-align: center; color: var(--white); background: var(--indigo);
+}
+
+.onboarding {
+  background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 18px 20px; margin-bottom: 18px; border-left: 4px solid var(--indigo);
+}
+.onboarding-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.onboarding-head h2 { margin: 0 0 2px; font-size: 18px; }
+.progress { height: 8px; border-radius: 999px; background: var(--gray-light); overflow: hidden; margin: 12px 0 6px; }
+.progress-bar { height: 100%; background: var(--indigo); border-radius: 999px; transition: width 0.3s ease; }
+.onboarding-steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.onb-step { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--gray-light); }
+.onb-step:first-child { border-top: 0; }
+.onb-check {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-weight: 800; font-size: 14px;
+  background: var(--indigo-light); color: var(--indigo-dark);
+}
+.onb-step.done .onb-check { background: var(--green); color: var(--white); }
+.onb-step.done .onb-text strong { text-decoration: line-through; text-decoration-thickness: 1px; color: #4B5563; }
+.onb-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.onb-text strong { font-size: 14.5px; overflow-wrap: anywhere; }
+.onb-text span { font-size: 13px; color: #4B5563; }
+.onb-step .btn { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .onb-step { flex-wrap: wrap; }
+  .onb-step .btn { margin-left: 42px; }
+}
+
+.copy-row { display: flex; gap: 8px; }
+.copy-row input { flex: 1 1 auto; min-width: 0; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.share-qr { display: flex; gap: 16px; align-items: center; margin-top: 8px; padding: 14px; border: 1px solid var(--gray-light); border-radius: 12px; }
+.share-qr .qr-box { flex: 0 0 auto; line-height: 0; }
+.share-qr .qr-box svg { display: block; max-width: 100%; height: auto; border: 1px solid var(--gray-light); border-radius: 8px; }
+.share-qr-text { display: grid; gap: 4px; font-size: 13.5px; color: #4B5563; min-width: 0; }
+.share-qr-text strong { color: var(--navy); font-size: 15px; }
+.share-fill { display: grid; gap: 8px; margin-top: 16px; padding: 14px; border-radius: 12px; background: var(--indigo-light); font-size: 13.5px; }
+.share-fill strong { font-size: 15px; }
+@media (max-width: 480px) {
+  .share-qr { flex-direction: column; align-items: flex-start; }
+}
+
+/* Cartel para el mostrador: solo existe al imprimir. */
+#posterPrint { display: none; }
+@media print {
+  body > *:not(#posterPrint) { display: none !important; }
+  #posterPrint { display: block !important; }
+  html, body { background: #fff !important; }
+  .poster { text-align: center; padding: 48px 24px; color: #14142B; font-family: inherit; }
+  .poster-logo { font-size: 28px; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; margin-bottom: 36px; }
+  .poster h1 { font-size: 44px; margin: 0 0 8px; overflow-wrap: anywhere; }
+  .poster-lead { font-size: 26px; margin: 0 0 28px; }
+  .poster svg { width: 420px; height: 420px; }
+  .poster-hint { font-size: 18px; margin: 24px 0 8px; }
+  .poster-link { font-size: 14px; color: #4B5563; overflow-wrap: anywhere; }
+}
+
+/* negocios.html: calculadora, capturas y nota del hero */
+.hero .hero-note { font-size: 13.5px; color: #4B5563; margin: 14px auto 0; max-width: 520px; }
+.calc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; max-width: 860px; margin: 0 auto; align-items: start; }
+.calc-form, .calc-result { background: var(--bg); border-radius: var(--radius); padding: 22px; }
+.calc-form .field:last-child { margin-bottom: 0; }
+.calc-form input[type="range"] { width: 100%; min-height: 44px; accent-color: var(--indigo); }
+.calc-form output { display: block; font-weight: 800; color: var(--indigo-dark); margin-top: 2px; }
+.calc-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--gray-light); font-size: 14px; }
+.calc-line strong { font-size: 22px; letter-spacing: -0.5px; white-space: nowrap; }
+.calc-line.good strong { color: #15803D; }
+.calc-result .field-hint { margin-top: 12px; }
+@media (max-width: 700px) { .calc { grid-template-columns: minmax(0, 1fr); } }
+.shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 980px; margin: 0 auto; }
+.shots figure { margin: 0; background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.shots img { display: block; width: 100%; height: auto; }
+.shots figcaption { padding: 12px 16px; font-size: 13.5px; color: #4B5563; }
+@media (max-width: 800px) { .shots { grid-template-columns: minmax(0, 1fr); } }
+
+/* Rutas del cliente: aviso de "lo más pronto", estados vacíos con salida, invitar a un negocio */
+.subnav [hidden] { display: none !important; }
+#reservationsSection { scroll-margin-top: 92px; }
+.next-hint {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; margin-bottom: 14px; border-radius: 12px; background: var(--indigo-light);
+  color: var(--indigo-dark); font-size: 14px;
+}
+.next-hint span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.empty-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+.empty-actions:empty { display: none; }
+.invite-box {
+  display: grid; gap: 6px; justify-items: start; margin-top: 28px; padding: 16px 18px;
+  border: 1.5px dashed var(--gray-light); border-radius: var(--radius); background: var(--white);
+  font-size: 14px; color: #4B5563;
+}
+.invite-box strong { color: var(--navy); font-size: 15px; }
+.slot.highlight { box-shadow: 0 0 0 3px var(--indigo); }
+a.cat-link { text-decoration: none; color: inherit; display: block; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+a.cat-link:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(20, 20, 43, 0.1); }
+
+.auth-aside { font-size: 13.5px; color: #4B5563; margin: -14px 0 18px; }
+.auth-aside a { color: var(--indigo); font-weight: 700; text-decoration: underline; }
+
+/* Barra superior con 3 acciones: en pantallas angostas las acciones pasan a su propio renglón (antes se salían). */
+@media (max-width: 480px) {
+  .navbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; }
+  .navbar .nav-links { width: 100%; justify-content: space-between; gap: 6px; }
+  .navbar .nav-links .btn { padding-left: 10px; padding-right: 10px; flex: 1 1 auto; }
+}
