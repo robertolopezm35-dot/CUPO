@@ -2,6 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<script>
+  // Esta página se sirve para CUALQUIER ruta que no existe (incluso /a/b/c): sin esto sus estilos, ícono y botones
+  // se pedían relativos a esa ruta y fallaban. En github.io/CUPO/ la raíz es /CUPO/; en el dominio propio es /.
+  (function () {
+    var root = /^\/CUPO\//i.test(location.pathname) ? "/CUPO/" : "/";
+    document.write('<base href="' + root + '">');
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CUPO — Página no encontrada</title>
 <meta name="robots" content="noindex">
@@ -13,11 +21,12 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <nav class="navbar">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
 </nav>
 
-<main style="max-width:480px;margin:120px auto;text-align:center;padding:0 20px">
+<main id="main" tabindex="-1" style="max-width:480px;margin:120px auto;text-align:center;padding:0 20px">
   <div style="font-size:72px;font-weight:800;color:var(--indigo);line-height:1">404</div>
   <h1 style="margin:16px 0 8px;font-size:24px">Este cupo ya no está disponible</h1>
   <p class="sub" style="margin-bottom:28px">La página que buscas no existe o se movió de lugar.</p>

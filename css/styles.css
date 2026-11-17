@@ -278,7 +278,7 @@ button {
   padding: 32px;
   border-top: 4px solid var(--indigo);
 }
-.split-card h3 {
+.split-card h2, .split-card h3 {
   font-size: 22px;
   margin: 0 0 10px;
 }
@@ -472,6 +472,7 @@ footer {
 }
 
 .dash-title {
+  overflow-wrap: anywhere;
   font-size: 26px;
   font-weight: 800;
   letter-spacing: -0.5px;
@@ -660,6 +661,7 @@ footer {
 }
 
 .biz-meta {
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--gray);
   display: flex;
@@ -1639,7 +1641,8 @@ footer {
   font: inherit; color: var(--navy); padding: 8px 10px; min-height: 40px;
   border: 1.5px solid var(--gray-light); border-radius: 10px; background: var(--white);
 }
-.period-caption { margin: 0 0 18px; color: var(--gray); font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.period-caption { margin: 0 0 18px; color: var(--gray); font-size: 13px; font-weight: 600; }
+.period-caption::first-letter { text-transform: uppercase; }
 
 .attention-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
@@ -1746,7 +1749,7 @@ footer {
 
 /* ───────────────────────── CLIENTE: lo más pronto, Mis reservas ───────────────────────── */
 .more-wrap { text-align: center; margin: 18px 0 4px; }
-.day-tabs.muted .day-tab { opacity: 0.55; }
+.day-tabs.muted .day-tab:not(.active) { color: #4B5563; background: var(--bg); }
 .next-pill {
   display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px;
   background: var(--indigo-light); color: var(--indigo-dark); font-size: 12px; font-weight: 700;
@@ -2018,9 +2021,11 @@ footer .footer-links a { display: inline-flex; align-items: center; min-height: 
 /* Cartel para el mostrador: solo existe al imprimir. */
 #posterPrint { display: none; }
 @media print {
-  body > *:not(#posterPrint) { display: none !important; }
-  #posterPrint { display: block !important; }
-  html, body { background: #fff !important; }
+  /* Solo al imprimir el cartel (clase puesta por negocio.js mientras dura la impresión).
+     Antes esta regla era global y dejaba en blanco la impresión de CUALQUIER página. */
+  html.printing-poster body > *:not(#posterPrint) { display: none !important; }
+  html.printing-poster #posterPrint { display: block !important; }
+  html.printing-poster, html.printing-poster body { background: #fff !important; }
   .poster { text-align: center; padding: 48px 24px; color: #14142B; font-family: inherit; }
   .poster-logo { font-size: 28px; font-weight: 800; display: inline-flex; align-items: center; gap: 10px; margin-bottom: 36px; }
   .poster h1 { font-size: 44px; margin: 0 0 8px; overflow-wrap: anywhere; }
@@ -2078,3 +2083,78 @@ a.cat-link:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(20, 
   .navbar .nav-links { width: 100%; justify-content: space-between; gap: 6px; }
   .navbar .nav-links .btn { padding-left: 10px; padding-right: 10px; flex: 1 1 auto; }
 }
+
+/* ───────────────────────── Ronda 3 (bots de rutas): pulido ───────────────────────── */
+/* Anclas (#como, #reservationsSection…) no quedan bajo la barra fija. */
+html { scroll-padding-top: 84px; }
+@media (max-width: 560px) { html { scroll-padding-top: 120px; } }
+
+/* Lista de primeros pasos en celular: círculo | texto, y el botón debajo del texto (antes el círculo quedaba arriba). */
+@media (max-width: 560px) {
+  .onb-step { display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 12px; row-gap: 8px; align-items: start; }
+  .onb-step .btn { grid-column: 2; justify-self: start; margin-left: 0; }
+}
+.btn-link { background: none; border: 0; padding: 0; color: var(--indigo); font-weight: 700; text-decoration: underline; cursor: pointer; font: inherit; }
+.onboarding-head .btn-link-quiet { color: var(--gray); font-weight: 600; font-size: 13px; background: none; border: 0; cursor: pointer; text-decoration: underline; min-height: 32px; }
+.show-onboarding-row { margin: 0 0 14px; }
+
+/* Calculadora en pantallas angostas: la línea del resultado ya no se sale de la tarjeta. */
+.calc-line { flex-wrap: wrap; }
+.calc-line strong { font-size: clamp(18px, 6vw, 22px); }
+.calc-result, .calc-form { min-width: 0; }
+.field-error { color: #B91C1C; font-size: 13px; font-weight: 600; margin-top: 4px; }
+input[aria-invalid="true"] { border-color: #B91C1C; }
+
+/* Avisos de error/éxito de auth visibles (con foco y desplazamiento). */
+.auth-success { background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; padding: 12px 14px; border-radius: 12px; font-size: 14px; margin-bottom: 14px; }
+.auth-notice { background: var(--indigo-light); color: var(--indigo-dark); padding: 12px 14px; border-radius: 12px; font-size: 14px; margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.auth-notice[hidden] { display: none; }
+.auth-notice a, .auth-notice button { color: var(--indigo-dark); font-weight: 700; text-decoration: underline; background: none; border: 0; cursor: pointer; font: inherit; padding: 0; min-height: 32px; }
+#errorMsg:focus { outline: 2px solid #B91C1C; outline-offset: 2px; }
+
+/* Aviso en la tarjeta de un link compartido (?negocio=ID) y mini-aviso general en la lista. */
+.list-notice { padding: 12px 16px; margin-bottom: 14px; border-radius: 12px; background: var(--indigo-light); color: var(--indigo-dark); font-size: 14px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.list-notice.warn { background: #FFFBEB; color: #92400E; }
+.list-notice .btn, .list-notice button { flex: 0 0 auto; }
+.fatal-inline { text-align: center; padding: 28px 20px; background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); }
+.fatal-inline p { margin: 0 0 14px; color: #374151; }
+
+/* Contador de filtros activos en el botón de filtros del celular. */
+.filters-toggle .filters-count { display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 6px; border-radius: 999px; font-size: 12px; line-height: 18px; text-align: center; color: var(--white); background: var(--indigo); }
+
+/* Móvil: más grande donde se toca mucho. */
+@media (max-width: 700px) {
+  .area-tab, .period-tabs button { min-height: 44px; }
+  .search-input { min-height: 44px; }
+}
+
+/* Encabezado y barra de secciones alineados con la columna de contenido en pantallas anchas. */
+@media (min-width: 1100px) {
+  .dash-header, .subnav { padding-left: calc((100% - 1080px) / 2 + 20px); padding-right: calc((100% - 1080px) / 2 + 20px); }
+}
+
+/* Alto contraste: sección actual, progreso y tarjetas siguen distinguiéndose. */
+@media (forced-colors: active) {
+  .subnav [aria-current="page"] { border: 2px solid Highlight; text-decoration: underline; }
+  .progress { border: 1px solid CanvasText; }
+  .progress-bar { forced-color-adjust: none; background: Highlight; }
+  .card, .trust-item, .calc-form, .calc-result, .faq details, .onboarding, .invite-box, .list-notice, .auth-notice, .next-hint, .shots figure { border: 1px solid CanvasText; }
+  .btn-primary { border: 3px double ButtonText; font-weight: 800; }
+  .logo-badge { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .onb-check { border: 1px solid CanvasText; }
+}
+
+/* cliente.html: negocio nuevo, negocio sin cupos publicados, área "Próximamente" */
+.new-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--indigo-light); color: var(--indigo-dark); font-size: 12px; font-weight: 700; }
+.slots-none { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.slots-none-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+body.area-soon #dayTabs, body.area-soon .search-row, body.area-soon #moreFilters, body.area-soon .invite-box { display: none !important; }
+.auth-back { margin: -6px 0 14px; font-size: 13.5px; }
+.auth-back a { color: var(--indigo); font-weight: 700; }
+.auth-aside .btn-link { font-size: inherit; }
+.btn-link { min-height: 24px; padding: 4px 2px; display: inline-block; }
+.onboarding-head .btn-link-quiet { min-height: 40px; padding: 0 6px; }
+/* Nombres largos sin espacios (negocio, servicio) no ensanchan la página. */
+.list-notice > span, .next-hint > span, .empty-state strong, .empty-state p { min-width: 0; overflow-wrap: anywhere; }
+.catalog-row > span { min-width: 0; overflow-wrap: anywhere; }
+.auth-notice, .session-notice { overflow-wrap: anywhere; }

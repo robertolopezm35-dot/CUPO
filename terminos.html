@@ -12,6 +12,7 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <nav class="navbar">
   <a href="index.html" class="logo"><span class="logo-badge">C</span> CUPO</a>
   <div class="nav-links">
@@ -19,7 +20,7 @@
   </div>
 </nav>
 
-<main class="legal">
+<main class="legal" id="main" tabindex="-1">
   <h1>Términos y condiciones</h1>
   <p class="legal-date">Última actualización: 11 de noviembre de 2026</p>
 
@@ -41,6 +42,7 @@
     <li>Tu reserva queda confirmada al recibir tu folio. Preséntalo al llegar.</li>
     <li>Cada negocio define hasta cuántas horas antes puedes cancelar sin costo; lo ves antes de confirmar. Pasado ese límite debes contactar al negocio.</li>
     <li>El negocio puede cancelar una cita por causas de fuerza mayor; en ese caso el cupo se libera y debe avisarte.</li>
+    <li>Puedes tener hasta 3 citas próximas a la vez y no dos que se encimen, para que los cupos de último momento alcancen para más personas.</li>
     <li>Si no te presentas de forma reiterada, el negocio puede dejar de aceptar tus reservas.</li>
   </ul>
 
@@ -53,7 +55,7 @@
   </ul>
 
   <h2>5. Reseñas</h2>
-  <p>Solo quien reservó en un negocio puede reseñarlo. Escribe con honestidad y respeto. Podemos retirar reseñas falsas, ofensivas o que incumplan estos términos.</p>
+  <p>Solo quien fue atendido en un negocio (con una cita que ya pasó y sin la marca “No llegó”) puede reseñarlo. Escribe con honestidad y respeto. Podemos retirar reseñas falsas, ofensivas o que incumplan estos términos.</p>
 
   <h2>6. Uso aceptable</h2>
   <p>No puedes usar CUPO para actividades ilegales, suplantar a otra persona, publicar información falsa, intentar acceder a datos que no te corresponden, afectar el funcionamiento de la plataforma o hacer reservas que no piensas cumplir.</p>
@@ -65,7 +67,7 @@
   <p>Podemos suspender o cerrar cuentas que incumplan estos términos. Tú puedes dejar de usar CUPO y pedir que eliminemos tu cuenta cuando quieras.</p>
 
   <h2>9. Datos personales</h2>
-  <p>El tratamiento de tus datos se explica en nuestro <a href="privacidad.html">Aviso de privacidad</a>.</p>
+  <p>El tratamiento de tus datos se explica en nuestro <a href="privacidad.html">Aviso de privacidad</a>. Para dudas o solicitudes, escríbenos a <span data-contact-email>la dirección de contacto que se publicará en esta página</span>.</p>
 
   <h2>10. Cambios</h2>
   <p>Podemos actualizar estos términos; publicaremos la versión vigente aquí con su fecha. Si sigues usando CUPO después del cambio, lo aceptas.</p>
@@ -80,5 +82,18 @@
   <div class="footer-links"><a href="terminos.html">Términos y condiciones</a><a href="privacidad.html">Aviso de privacidad</a></div>
   &copy; 2026 CUPO · Monterrey, N.L.
 </footer>
+<script src="js/site-config.js"></script>
+<script>
+  (function () {
+    var email = window.SITE_CONFIG && window.SITE_CONFIG.contactEmail;
+    if (!email) return;
+    document.querySelectorAll("[data-contact-email]").forEach(function (el) {
+      var a = document.createElement("a");
+      a.href = "mailto:" + email;
+      a.textContent = email;
+      el.replaceWith(a);
+    });
+  })();
+</script>
 </body>
 </html>

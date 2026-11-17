@@ -3,6 +3,7 @@
   "short_name": "CUPO",
   "description": "Cupos libres de barberías, salones, spas y estéticas en Monterrey. Reserva al instante.",
   "lang": "es-MX",
+  "id": "./cliente.html",
   "start_url": "cliente.html",
   "scope": "./",
   "display": "standalone",

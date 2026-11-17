@@ -7,6 +7,29 @@
   function showError(msg) {
     errorMsg.textContent = msg;
     errorMsg.classList.add("show");
+    errorMsg.scrollIntoView({ block: "center" });
+    errorMsg.focus({ preventScroll: true });
+  }
+
+  // El rol con el que pidió el link (se guarda al solicitarlo) sirve para mandarlo al login correcto si el link venció.
+  let hintedRole = "cliente";
+  try { if (sessionStorage.getItem("cupo_reset_role") === "negocio") hintedRole = "negocio"; } catch (err) { /* sin almacenamiento */ }
+  function showInvalidLink(transient) {
+    form.hidden = true;
+    invalidLinkPanel.hidden = false;
+    document.getElementById("newLinkBtn").href = "auth.html?mode=login&role=" + hintedRole + "&forgot=1";
+    document.getElementById("backLoginLink").href = "auth.html?mode=login&role=" + hintedRole;
+    const retry = document.getElementById("retryLinkBtn");
+    if (transient) {
+      // Un fallo de conexión NO es "el link venció": se deja reintentar sin pedir otro correo.
+      pageSub.textContent = "No pudimos verificar tu link por un problema de conexión.";
+      document.getElementById("invalidLinkText").textContent = "Revisa tu internet e inténtalo de nuevo. El link sigue siendo válido.";
+      retry.hidden = false;
+      retry.addEventListener("click", () => window.location.reload());
+      document.getElementById("newLinkBtn").hidden = true;
+    } else {
+      pageSub.textContent = "Este link ya no es válido o expiró.";
+    }
   }
 
   // supabase-js arma sola la sesión temporal de recuperación leyendo el
@@ -17,14 +40,14 @@
   try {
     session = await DataStore.getSession();
   } catch (err) {
-    session = null;
-  }
-  if (!session) {
-    form.hidden = true;
-    invalidLinkPanel.hidden = false;
-    pageSub.textContent = "Este link ya no es válido o expiró.";
+    showInvalidLink(true);
     return;
   }
+  if (!session) {
+    showInvalidLink(false);
+    return;
+  }
+  if (session.role === "negocio") hintedRole = "negocio";
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

@@ -543,12 +543,35 @@ const CupoStore = (() => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // localStorage puede estar bloqueado (modo privado de algunos navegadores, política de la empresa) o lleno:
+  // en vez de reventar toda la página, lo que no se puede guardar vive en memoria mientras la página siga abierta.
+  const memory = new Map();
+  const failedKeys = new Set();
+  const storage = {
+    get(key) {
+      if (failedKeys.has(key)) return memory.has(key) ? memory.get(key) : null;
+      try { return localStorage.getItem(key); } catch (err) { return memory.has(key) ? memory.get(key) : null; }
+    },
+    set(key, value) {
+      memory.set(key, value);
+      try { localStorage.setItem(key, value); failedKeys.delete(key); } catch (err) {
+        if (!failedKeys.size) console.warn("No se puede guardar en este navegador (bloqueado o sin espacio): los cambios se pierden al cerrar la página.", err);
+        failedKeys.add(key);
+      }
+    },
+    remove(key) {
+      memory.delete(key);
+      failedKeys.delete(key);
+      try { localStorage.removeItem(key); } catch (err) { /* sin almacenamiento */ }
+    },
+  };
+
   function init() {
-    if (!localStorage.getItem(KEYS.businesses)) {
-      localStorage.setItem(KEYS.businesses, JSON.stringify(seedBusinesses()));
+    if (!storage.get(KEYS.businesses)) {
+      storage.set(KEYS.businesses, JSON.stringify(seedBusinesses()));
     }
-    if (!localStorage.getItem(KEYS.clients)) {
-      localStorage.setItem(KEYS.clients, JSON.stringify([]));
+    if (!storage.get(KEYS.clients)) {
+      storage.set(KEYS.clients, JSON.stringify([]));
     }
     refreshOnLoad();
   }
@@ -659,7 +682,7 @@ const CupoStore = (() => {
   // no revienta toda la página: se lee como "vacío" y se avisa en la consola.
   function readJson(key, fallback) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = storage.get(key);
       if (raw == null || raw === "") return fallback;
       const value = JSON.parse(raw);
       return value == null ? fallback : value;
@@ -675,7 +698,7 @@ const CupoStore = (() => {
   }
 
   function saveBusinesses(list) {
-    localStorage.setItem(KEYS.businesses, JSON.stringify(list));
+    storage.set(KEYS.businesses, JSON.stringify(list));
   }
 
   function getClients() {
@@ -690,7 +713,7 @@ const CupoStore = (() => {
   }
 
   function saveClients(list) {
-    localStorage.setItem(KEYS.clients, JSON.stringify(list));
+    storage.set(KEYS.clients, JSON.stringify(list));
   }
 
   function getSession() {
@@ -699,11 +722,11 @@ const CupoStore = (() => {
   }
 
   function setSession(session) {
-    localStorage.setItem(KEYS.session, JSON.stringify(session));
+    storage.set(KEYS.session, JSON.stringify(session));
   }
 
   function clearSession() {
-    localStorage.removeItem(KEYS.session);
+    storage.remove(KEYS.session);
   }
 
   function findBusinessByEmail(email) {

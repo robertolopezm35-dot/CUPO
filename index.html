@@ -12,7 +12,7 @@
 <meta property="og:title" content="CUPO — Citas de último momento, al instante">
 <meta property="og:description" content="Cupos libres hoy en barberías, salones, spas y estéticas de Monterrey. Reserva en segundos y paga en el negocio.">
 <meta property="og:url" content="https://mycupo.com/">
-<meta property="og:image" content="https://mycupo.com/assets/og-image.png">
+<meta property="og:image" content="https://mycupo.com/assets/og-image.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
@@ -24,16 +24,18 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Saltar al contenido</a>
 <nav class="navbar">
   <div class="logo"><span class="logo-badge">C</span> CUPO</div>
   <div class="nav-links">
     <a href="negocios.html" class="btn btn-ghost btn-sm">Para negocios</a>
-    <a href="auth.html?mode=login" class="btn btn-ghost btn-sm">Iniciar sesión</a>
-    <a href="auth.html?mode=register" class="btn btn-primary btn-sm">Crear cuenta</a>
+    <a href="auth.html?mode=login" class="btn btn-ghost btn-sm" data-guest-only>Iniciar sesión</a>
+    <a href="auth.html?mode=register" class="btn btn-primary btn-sm" data-guest-only>Crear cuenta</a>
+    <a href="cliente.html" class="btn btn-primary btn-sm" data-session-link hidden>Ir a mis cupos</a>
   </div>
 </nav>
 
-<main>
+<main id="main" tabindex="-1">
 <header class="hero">
   <div class="eyebrow">Espacios de última hora, en tiempo real</div>
   <h1>No dejes que una <span>cancelación</span><br>se convierta en un hueco vacío</h1>
@@ -61,7 +63,7 @@
 
   <div class="hero-shot">
     <div class="hero-shot-bar"><span></span><span></span><span></span></div>
-    <img src="assets/app-screenshot.png" alt="Panel de cliente de CUPO mostrando cupos disponibles hoy en negocios de Monterrey" loading="lazy">
+    <img src="assets/app-screenshot.jpg" alt="Panel de cliente de CUPO mostrando cupos disponibles hoy en negocios de Monterrey" width="2360" height="1720" fetchpriority="low">
   </div>
   <p class="hero-note">Vista de ejemplo con datos de demostración.</p>
 </header>
@@ -70,12 +72,12 @@
   <div class="container">
     <div class="split">
       <div class="split-card">
-        <h3>Para clientes</h3>
+        <h2>Para clientes</h2>
         <p>Consulta en un solo lugar la disponibilidad real de negocios cerca de ti y reserva al instante, sin escribirle a cinco lugares por WhatsApp.</p>
         <a href="cliente.html" class="btn btn-primary btn-sm">Ver cupos disponibles</a>
       </div>
       <div class="split-card">
-        <h3>Para negocios</h3>
+        <h2>Para negocios</h2>
         <p>Publica los huecos que deja una cancelación y vuelve a llenar tu agenda del día. Comparte tu link y tu QR con los clientes que ya tienes. Tú decides el precio y el horario.</p>
         <a href="negocios.html" class="btn btn-primary btn-sm">Tengo un negocio</a>
       </div>
@@ -91,7 +93,7 @@
       <div class="card">
         <div class="card-icon">1</div>
         <h3>Ve la disponibilidad real</h3>
-        <p>Explora barberías, salones, spas y estéticas con cupos libres hoy, ordenados por cercanía.</p>
+        <p>Explora barberías, salones, spas y estéticas con cupos libres hoy, empezando por los que tienen un lugar más pronto (y si quieres, ordenados por cercanía).</p>
       </div>
       <div class="card">
         <div class="card-icon">2</div>
@@ -112,7 +114,7 @@
     <h2 class="section-title">Reserva con confianza</h2>
     <p class="section-sub">Lo que hace a CUPO diferente de escribirle a cada negocio por WhatsApp.</p>
     <div class="trust-row">
-      <div class="trust-item"><div class="ico">⚡</div><strong>Disponibilidad real</strong><span>Solo ves cupos que el negocio tiene libres ahora. Si se ocupa, desaparece al instante.</span></div>
+      <div class="trust-item"><div class="ico">⚡</div><strong>Disponibilidad real</strong><span>Solo ves cupos que el negocio tiene libres ahora. Si alguien lo reserva, deja de aparecer; la lista se actualiza sola cada pocos segundos.</span></div>
       <div class="trust-item"><div class="ico">⭐</div><strong>Reseñas verificadas</strong><span>Solo puede opinar quien ya fue atendido en ese negocio. Nada de reseñas anónimas.</span></div>
       <div class="trust-item"><div class="ico">💵</div><strong>Pagas en el negocio</strong><span>Reservar es gratis y sin tarjeta. Cancelas sin costo hasta el límite que cada negocio define.</span></div>
     </div>
@@ -152,7 +154,8 @@
       <details><summary>¿Cuánto cuesta reservar?</summary><p>Nada. Reservar en CUPO es gratis y no pedimos tarjeta: el pago se hace directamente en el negocio, por los medios que él acepte.</p></details>
       <details><summary>¿Cómo sé que mi cita está confirmada?</summary><p>Al reservar recibes un folio (por ejemplo CUPO-AB12CD) y tu cita aparece en “Mis reservas” con la dirección, un botón para llegar en el mapa y otro para agregarla a tu calendario.</p></details>
       <details><summary>¿Puedo cancelar o cambiar mi cita?</summary><p>Sí, desde “Mis reservas”, sin costo, hasta el límite de horas que define cada negocio (lo ves antes de confirmar). Para cambiarla, elige “Reagendar”: cancela esa cita y te muestra otros horarios del mismo negocio.</p></details>
-      <details><summary>Tengo un negocio, ¿cómo publico mis cupos?</summary><p>Crea tu cuenta de negocio, agrega tus servicios y define tu horario semanal una sola vez: los cupos se publican solos para las próximas semanas. Puedes cerrar días, agendar a mano a quien te llama y ver tus ventas.</p></details>
+      <details><summary>Tengo un negocio, ¿cómo publico mis cupos?</summary><p>Crea tu cuenta de negocio, agrega tus servicios y define tu horario semanal una sola vez: al abrir tu panel se publican tus cupos de las próximas 4 semanas. Puedes cerrar días, agendar a mano a quien te llama y ver tus ventas.</p></details>
+      <details><summary>¿Cuántas citas puedo tener a la vez?</summary><p>Hasta 3 citas próximas y nunca dos encimadas: así los cupos de último momento alcanzan para más personas.</p></details>
       <details><summary>¿Qué pasa con mis datos?</summary><p>Los usamos solo para tu cuenta y tus reservas, y el negocio donde reservas ve tu nombre y teléfono para atenderte. No los vendemos. Lee el <a href="privacidad.html" style="color:var(--indigo);text-decoration:underline">Aviso de privacidad</a>.</p></details>
     </div>
   </div>
@@ -165,5 +168,6 @@
   &copy; 2026 CUPO · Monterrey, N.L. · Trabajo decente y crecimiento económico (ODS 8)
 </footer>
 
+<script src="js/session-hint.js"></script>
 </body>
 </html>

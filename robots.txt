@@ -1,8 +1,7 @@
 User-agent: *
 Allow: /
-Disallow: /negocio.html
-Disallow: /ventas.html
-Disallow: /auth.html
-Disallow: /reset-password.html
+
+# Las páginas privadas (auth, negocio, ventas, reset-password) llevan <meta name="robots" content="noindex">.
+# No se bloquean aquí a propósito: si el rastreador no puede abrirlas, nunca lee ese "noindex".
 
 Sitemap: https://mycupo.com/sitemap.xml

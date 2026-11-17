@@ -6,7 +6,7 @@
 <title>CUPO — Panel del negocio</title>
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#4F46E5">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="manifest" href="manifest-negocio.webmanifest">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/styles.css">
@@ -39,7 +39,7 @@
       <button class="btn btn-outline btn-sm" id="editProfileBtn">Editar negocio</button>
     </div>
   </div>
-  <p class="dash-sub">Programa tu semana una sola vez en “Horario semanal” y CUPO publica tus cupos solo. Toca un día del calendario para ver sus citas, agendar, cancelar o cerrarlo.</p>
+  <p class="dash-sub">Programa tu semana una sola vez en “Horario semanal”: CUPO publica tus cupos de las próximas 4 semanas cada vez que abres tu panel. Toca un día del calendario para ver sus citas, agendar, cancelar o cerrarlo.</p>
 
   <section id="onboarding" class="onboarding" aria-labelledby="onboardingTitle" hidden>
     <div class="onboarding-head">
@@ -47,14 +47,15 @@
         <h2 id="onboardingTitle">Pon tu negocio a trabajar</h2>
         <p id="onboardingSub" class="field-hint"></p>
       </div>
-      <button type="button" class="btn-link-danger" id="onboardingHide">Ocultar</button>
+      <button type="button" class="btn-link-quiet" id="onboardingHide">Ocultar por ahora</button>
     </div>
     <div class="progress" aria-hidden="true"><div class="progress-bar" id="onboardingBar"></div></div>
     <ol class="onboarding-steps" id="onboardingSteps"></ol>
   </section>
+  <p id="showOnboardingRow" class="show-onboarding-row" hidden><button type="button" class="btn-link" id="onboardingShow">Mostrar los primeros pasos</button></p>
 
   <div id="scheduleNudge" class="favorites-banner" hidden>
-    <span>💡 ¿Publicas cupo por cupo? Programa tu horario una vez y se repite solo todas las semanas.</span>
+    <span>💡 ¿Publicas cupo por cupo? Programa tu horario una vez y se repite cada semana (se publica al abrir tu panel).</span>
     <button type="button" class="btn btn-primary btn-sm" id="scheduleNudgeBtn">Programar horario</button>
   </div>
 
@@ -338,7 +339,8 @@
       <button type="button" class="modal-close" id="closeShareBtn" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
-      <p class="policy-note">Tus clientes ven tus horarios libres y reservan en un toque, sin escribirte. Úsalo con quienes ya te conocen: no necesitas esperar a clientes nuevos.</p>
+      <p class="policy-note">Tus clientes ven tus horarios libres y reservan sin escribirte; la primera vez crean una cuenta rápida (nombre, correo, teléfono y contraseña). Úsalo con quienes ya te conocen: no necesitas esperar a clientes nuevos.</p>
+      <p class="field-hint" id="shareEnvWarn" hidden>⚠️ Estás en una versión de prueba: este link y el QR solo funcionan aquí. Ábrelo desde tu sitio real para compartirlo.</p>
       <div class="field">
         <label for="shareLink">Tu link</label>
         <div class="copy-row">
@@ -408,6 +410,7 @@
 <script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
 <script src="js/vendor/qrcode.js"></script>
+<script src="js/site-config.js"></script>
 <script src="js/share.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>

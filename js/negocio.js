@@ -1,4 +1,10 @@
 (async function () {
+  // Sin sesión de negocio: al login de negocio, y después de entrar se regresa a esta misma página
+  // (antes se perdía el destino, p. ej. negocio.html?compartir=1 o Ventas). replace: "Atrás" no vuelve a una página que redirige.
+  function goToNegocioLogin() {
+    const here = window.location.pathname.split("/").pop() || "negocio.html";
+    window.location.replace("auth.html?mode=login&role=negocio&reason=negocio&next=" + encodeURIComponent(here + window.location.search));
+  }
   let session;
   try {
     session = await DataStore.getSession();
@@ -9,7 +15,7 @@
     return;
   }
   if (!session || session.role !== "negocio") {
-    window.location.href = "auth.html?mode=login&role=negocio";
+    goToNegocioLogin();
     return;
   }
   DataStore.watchSessionChange();
@@ -34,7 +40,7 @@
   if (!business) {
     // Solo si de verdad no existe (no por un fallo de red).
     await DataStore.clearSession();
-    window.location.href = "auth.html?mode=login&role=negocio";
+    goToNegocioLogin();
     return;
   }
 
@@ -214,13 +220,41 @@
     });
   }
 
+  // Repintar con innerHTML destruye el elemento enfocado: quien navega con teclado (o un lector de pantalla)
+  // perdía su lugar cada 20 s y al elegir un día. Se recuerda cuál era (por sus data-*, o por su posición)
+  // y se le devuelve el foco al repintar.
+  const FOCUS_HOSTS = "#calGrid, #dayAgenda, #daySlots, #dayNotices, #dayActions, #onboardingSteps, #bookingsList, #pastAppointmentsList";
+  function captureFocus() {
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.closest) return null;
+    const host = a.closest(FOCUS_HOSTS);
+    if (!host || !host.id) return null;
+    const tag = a.tagName.toLowerCase();
+    const attrs = Array.from(a.attributes)
+      .filter((x) => x.name.startsWith("data-"))
+      .map((x) => "[" + x.name + '="' + CSS.escape(x.value) + '"]').join("");
+    return { host: "#" + host.id, tag, attrs, idx: Array.from(host.querySelectorAll(tag)).indexOf(a) };
+  }
+  function restoreFocus(d) {
+    if (!d) return;
+    const host = document.querySelector(d.host);
+    if (!host) return;
+    let el = d.attrs ? host.querySelector(d.tag + d.attrs) : null;
+    if (!el && d.idx >= 0) el = host.querySelectorAll(d.tag)[d.idx] || null;
+    if (el && el !== document.activeElement) el.focus({ preventScroll: true });
+  }
+  function keepFocus(fn) {
+    const d = captureFocus();
+    fn();
+    restoreFocus(d);
+  }
+
   function selectDay(key) {
     selectedDate = key;
     const d = new Date(S.parseDateKey(key));
     calMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
     $("addSlotForm").hidden = true;
-    renderCalendar();
-    renderDay();
+    keepFocus(() => { renderCalendar(); renderDay(); });
   }
 
   function shiftMonth(delta) {
@@ -383,7 +417,7 @@
     if (!slots.length) {
       daySlots.innerHTML = info.past || info.closure
         ? ""
-        : '<div class="empty-state">No hay cupos este día. Agrega uno suelto aquí abajo, o programa tu Horario semanal para que se publiquen solos.</div>';
+        : '<div class="empty-state">No hay cupos este día. Agrega uno suelto aquí abajo, o programa tu Horario semanal para que se publiquen al abrir tu panel.</div>';
     } else if (staffList.length) {
       const groups = staffList
         .map((st) => ({ name: st.name, list: slots.filter((s) => s.staffId === st.id) }))
@@ -582,7 +616,7 @@
   }
   $("closeSlotDetailBtn").addEventListener("click", closeSlotDetail);
   $("cancelSlotDetailBtn").addEventListener("click", closeSlotDetail);
-  slotDetailModal.addEventListener("click", (e) => { if (e.target === slotDetailModal) closeSlotDetail(); });
+  CupoUI.overlayClose(slotDetailModal, closeSlotDetail);
 
   function openSlotDetail(slotId) {
     const slot = business.slots.find((s) => s.id === slotId);
@@ -779,7 +813,7 @@
   }
   $("closeCloseDayBtn").addEventListener("click", closeCloseDay);
   $("cancelCloseDayBtn").addEventListener("click", closeCloseDay);
-  closeDayModal.addEventListener("click", (e) => { if (e.target === closeDayModal) closeCloseDay(); });
+  CupoUI.overlayClose(closeDayModal, closeCloseDay);
 
   function updateCloseDayWarning() {
     const who = $("closeDayWho").value || null;
@@ -927,7 +961,7 @@
     const total = draft.lanes.reduce((sum, l) => sum + l.rules.reduce((n, r) => n + ruleSlotsPerWeek(r), 0), 0);
     $("scheduleTotal").textContent = total
       ? `En total: ${plural(total, "cupo", "cupos")} por semana.`
-      : "Todavía no hay turnos: agrega al menos uno para que tus cupos se publiquen solos.";
+      : "Todavía no hay turnos: agrega al menos uno para que tus cupos se publiquen al abrir tu panel.";
 
     $("scheduleCards").querySelectorAll(".sched-card").forEach((card) => {
       const lane = draft.lanes[parseInt(card.dataset.lane, 10)];
@@ -1026,7 +1060,7 @@
   $("scheduleNudgeBtn").addEventListener("click", openSchedule);
   $("closeScheduleBtn").addEventListener("click", () => closeSchedule());
   $("cancelScheduleBtn").addEventListener("click", () => closeSchedule());
-  scheduleModal.addEventListener("click", (e) => { if (e.target === scheduleModal) closeSchedule(); });
+  CupoUI.overlayClose(scheduleModal, closeSchedule);
 
   const saveScheduleBtn = $("saveScheduleBtn");
   saveScheduleBtn.addEventListener("click", async () => {
@@ -1192,7 +1226,7 @@
   }
   $("cancelEditBtn").addEventListener("click", () => closeEditModal());
   $("closeEditBtn").addEventListener("click", () => closeEditModal());
-  editModal.addEventListener("click", (e) => { if (e.target === editModal) closeEditModal(); });
+  CupoUI.overlayClose(editModal, closeEditModal);
 
   const saveEditBtn = $("saveEditBtn");
   saveEditBtn.addEventListener("click", async () => {
@@ -1314,7 +1348,7 @@
   }
   $("closePreviewBtn").addEventListener("click", closePreview);
   $("closePreviewBtn2").addEventListener("click", closePreview);
-  previewModal.addEventListener("click", (e) => { if (e.target === previewModal) closePreview(); });
+  CupoUI.overlayClose(previewModal, closePreview);
 
   function renderPreviewCard() {
     const b = business;
@@ -1362,7 +1396,7 @@
 
     const recentReviews = (b.reviews || []).slice().sort((x, y) => (y.date || 0) - (x.date || 0)).slice(0, 2);
     const reviewsHtml = `<details class="catalog-details">
-        <summary>★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})</summary>
+        <summary>${rating.count ? `★ ${rating.value.toFixed(1)} (${rating.count} reseña${rating.count === 1 ? "" : "s"})` : "Reseñas (0)"}</summary>
         ${recentReviews.length ? recentReviews.map((r) => `<div class="review-row"><strong>${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</strong> ${r.comment ? "— " + esc(r.comment) : ""} <span class="review-author">· ${esc(r.clientName)}</span>${r.photoUrl ? `<img class="review-photo" src="${esc(r.photoUrl)}" alt="Foto de la reseña de ${esc(r.clientName)}">` : ""}</div>`).join("") : '<div class="review-row" style="color:var(--gray)">Sin reseñas todavía.</div>'}
       </details>`;
 
@@ -1373,7 +1407,7 @@
           <h2 class="biz-name">${esc(b.name)}</h2>
           <div class="biz-meta">
             <span>${esc(b.address)}</span>
-            <span>★ ${rating.value.toFixed(1)}</span>
+            ${rating.count ? `<span>★ ${rating.value.toFixed(1)}</span>` : '<span class="new-pill">Nuevo</span>'}
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
@@ -1458,29 +1492,52 @@
   // Lo que más pesa para que un negocio se quede es llegar rápido a su primer valor: servicios,
   // horario, teléfono y compartir el link con SUS clientes (funciona desde el día 1, sin esperar
   // a que llegue gente nueva). El avance se calcula de lo que ya hay guardado.
-  const lsGet = (key) => { try { return localStorage.getItem(key); } catch (err) { return null; } };
-  const lsSet = (key, value) => { try { localStorage.setItem(key, value); } catch (err) { /* sin almacenamiento */ } };
+  // localStorage puede estar bloqueado (modo privado, política del navegador): las banderas también se
+  // guardan en memoria para que "Ocultar" y "compartido" funcionen al menos mientras la página siga abierta.
+  const memFlags = new Map();
+  const lsGet = (key) => {
+    try { const v = localStorage.getItem(key); if (v !== null) return v; } catch (err) { /* sin almacenamiento */ }
+    return memFlags.has(key) ? memFlags.get(key) : null;
+  };
+  const lsSet = (key, value) => { memFlags.set(key, value); try { localStorage.setItem(key, value); } catch (err) { /* sin almacenamiento */ } };
+  const lsDel = (key) => { memFlags.delete(key); try { localStorage.removeItem(key); } catch (err) { /* sin almacenamiento */ } };
   const sharedKey = () => "cupo_shared_" + business.id;
   const onboardingHiddenKey = () => "cupo_onb_hidden_" + business.id;
+  let onboardingWasVisible = false; // para festejar solo cuando se completa EN esta visita (no a quien ya terminó hace meses)
 
   function renderOnboarding() {
     const card = $("onboarding");
+    const showRow = $("showOnboardingRow");
     const catalogOk = (business.servicesCatalog || []).some((svc) => Number(svc.price) > 0);
     const scheduleOk = S.activeRules(business).length > 0;
     const phoneOk = !!business.phone;
-    const sharedOk = lsGet(sharedKey()) === "1" || business.slots.some((sl) => sl.status === "booked");
+    // Solo cuenta si de verdad compartió desde aquí (copiar, mandar, descargar el QR…): una cita agendada a mano
+    // o de demostración ya no marca este paso.
+    const sharedOk = lsGet(sharedKey()) === "1";
     const steps = [
       { done: catalogOk, act: "edit", title: "Agrega tus servicios y precios", hint: "De ahí salen el servicio y el precio de cada cupo.", btn: "Agregar servicios" },
-      { done: scheduleOk, act: "schedule", title: "Programa tu horario semanal", hint: "Lo defines una vez y tus cupos se publican solos cada semana.", btn: "Programar horario" },
+      { done: scheduleOk, act: "schedule", title: "Programa tu horario semanal", hint: "Lo defines una vez; al abrir tu panel se publican tus próximas 4 semanas.", btn: "Programar horario" },
       { done: phoneOk, act: "phone", title: "Pon tu teléfono o WhatsApp", hint: "Para que tus clientes te contacten con un toque desde su reserva.", btn: "Agregar teléfono" },
-      { done: sharedOk, act: "share", title: "Comparte tu link con tus clientes", hint: "Con tu link o QR reservan sin escribirte. Funciona desde hoy con quienes ya te conocen.", btn: "Compartir" },
+      { done: sharedOk, act: "share", title: "Comparte tu link con tus clientes", hint: "Con tu link o QR reservan sin escribirte (la primera vez crean una cuenta rápida). Funciona desde hoy con quienes ya te conocen.", btn: "Compartir" },
     ];
     const done = steps.filter((st) => st.done).length;
-    if (done === steps.length || lsGet(onboardingHiddenKey()) === "1") {
+    const hiddenByUser = lsGet(onboardingHiddenKey()) === "1";
+    if (done === steps.length) {
       card.hidden = true;
+      showRow.hidden = true;
+      if (onboardingWasVisible) {
+        onboardingWasVisible = false;
+        showToast("🎉 ¡Listo! Tu negocio ya está en marcha.");
+      }
+      $("scheduleNudge").hidden = S.activeRules(business).length > 0;
       return;
     }
-    card.hidden = false;
+    card.hidden = hiddenByUser;
+    showRow.hidden = !hiddenByUser;
+    if (!hiddenByUser) onboardingWasVisible = true;
+    // El aviso viejo de "programa tu horario" solo sale si la lista de primeros pasos no está a la vista (no repetir).
+    $("scheduleNudge").hidden = scheduleOk || !card.hidden;
+    if (hiddenByUser) return;
     $("onboardingSub").textContent = done + " de " + steps.length + " pasos listos";
     $("onboardingBar").style.width = Math.round((done / steps.length) * 100) + "%";
     $("onboardingSteps").innerHTML = steps.map((st, i) => `
@@ -1502,14 +1559,24 @@
       if (act === "phone") setTimeout(() => { const f = $("editPhone"); if (f) f.focus(); }, 80);
     }
   });
+  // "Ocultar por ahora" es reversible y neutro: queda un enlace "Mostrar los primeros pasos" en su lugar.
   $("onboardingHide").addEventListener("click", () => {
     lsSet(onboardingHiddenKey(), "1");
-    $("onboarding").hidden = true;
-    $("scheduleNudge").hidden = S.activeRules(business).length > 0;
+    renderOnboarding();
+    $("onboardingShow").focus();
+  });
+  $("onboardingShow").addEventListener("click", () => {
+    lsDel(onboardingHiddenKey());
+    renderOnboarding();
+    const title = $("onboardingTitle");
+    title.setAttribute("tabindex", "-1");
+    title.focus();
   });
 
   const shareModal = $("shareModal");
-  function markShared() {
+  // `ok === false`: no se pudo copiar/generar — no cuenta como "ya compartiste".
+  function markShared(ok) {
+    if (ok === false) return;
     if (lsGet(sharedKey()) !== "1") {
       lsSet(sharedKey(), "1");
       renderOnboarding();
@@ -1517,7 +1584,7 @@
   }
   function closeShare() { shareModal.classList.remove("show"); }
 
-  function openShare() {
+  function fillShare() {
     const link = CupoShare.bookingLink(business.id);
     $("shareLink").value = link;
     $("shareWhatsappBtn").href = CupoShare.whatsappShareUrl(CupoShare.inviteMessage(business));
@@ -1528,44 +1595,59 @@
     $("posterName").textContent = business.name;
     $("posterQr").innerHTML = CupoShare.qrSvg(link, { size: 360 });
     $("posterLink").textContent = link;
+    // Un link/QR sacado de una versión de prueba (localhost, vista previa) no sirve fuera de ahí.
+    $("shareEnvWarn").hidden = CupoShare.isLiveHost();
 
     // Huecos de hoy: se arma el mensaje con lo que de verdad sigue libre.
     const now = Date.now();
     const [dayStart, dayEnd] = dayRange(todayKey());
+    const bookable = (sl) => sl.status === "available" && sl.time > now && S.describeSlot(business, sl).bookable;
     const free = business.slots
-      .filter((sl) => sl.status === "available" && sl.time > now && sl.time >= dayStart && sl.time < dayEnd && S.describeSlot(business, sl).bookable)
+      .filter((sl) => bookable(sl) && sl.time >= dayStart && sl.time < dayEnd)
       .sort((a, b) => a.time - b.time);
     const fillBtn = $("shareFillBtn");
     if (free.length) {
-      $("shareFillInfo").textContent = "Hoy tienes " + free.length + " cupo" + (free.length === 1 ? "" : "s") + " libre" + (free.length === 1 ? "" : "s") + ". Mándalos a tus estados o grupos y llénalos antes de que pasen.";
+      const n = free.length;
+      $("shareFillInfo").textContent = "Hoy tienes " + n + " cupo" + (n === 1 ? "" : "s") + " libre" + (n === 1 ? "" : "s") + ". " + (n === 1 ? "Mándalo" : "Mándalos") + " a tus estados o grupos y " + (n === 1 ? "llénalo" : "llénalos") + " antes de que pasen.";
       fillBtn.hidden = false;
       fillBtn.href = CupoShare.whatsappShareUrl(CupoShare.slotsMessage(business, free));
+    } else if (business.slots.some(bookable)) {
+      $("shareFillInfo").textContent = "Hoy ya no quedan cupos libres. Cuando se libere uno (una cancelación, un descuento), aquí podrás avisarlo con un toque.";
+      fillBtn.hidden = true;
     } else {
-      $("shareFillInfo").textContent = "Hoy ya no te quedan cupos libres. Cuando se libere uno (una cancelación, un descuento), aquí podrás avisarlo con un toque.";
+      $("shareFillInfo").textContent = "Todavía no tienes cupos publicados, así que quien abra tu link no verá a qué hora reservar. Programa tu horario semanal (o publica un cupo suelto) para que aparezcan.";
       fillBtn.hidden = true;
     }
+  }
+
+  function openShare() {
+    fillShare();
     shareModal.classList.add("show");
+    // Los datos en pantalla pueden tener varios segundos: se relee el negocio para no ofrecer avisar cupos ya reservados.
+    getBusiness().then((fresh) => {
+      if (fresh && shareModal.classList.contains("show")) { business = fresh; fillShare(); }
+    }).catch(() => { /* se queda con lo que ya se tenía */ });
   }
 
   $("shareBtn").addEventListener("click", openShare);
   $("subnavShare").addEventListener("click", openShare);
   $("closeShareBtn").addEventListener("click", closeShare);
   $("shareDoneBtn").addEventListener("click", closeShare);
-  shareModal.addEventListener("click", (e) => { if (e.target === shareModal) closeShare(); });
+  CupoUI.overlayClose(shareModal, closeShare);
   $("shareCopyBtn").addEventListener("click", async () => {
     const ok = await CupoShare.copyText($("shareLink").value);
     if (!ok) $("shareLink").select();
     showToast(ok ? "Link copiado. Pégalo donde quieras." : "Selecciona el link y cópialo manualmente.");
-    markShared();
+    markShared(ok);
   });
   $("shareBioBtn").addEventListener("click", async () => {
     const ok = await CupoShare.copyText(CupoShare.bioText(business));
     showToast(ok ? "Texto copiado. Pégalo en la descripción de tu Instagram." : "No se pudo copiar. Usa el link de arriba.");
-    markShared();
+    markShared(ok);
   });
-  $("shareWhatsappBtn").addEventListener("click", markShared);
-  $("shareFillBtn").addEventListener("click", markShared);
-  $("slotShareBtn").addEventListener("click", markShared);
+  $("shareWhatsappBtn").addEventListener("click", () => markShared());
+  $("shareFillBtn").addEventListener("click", () => markShared());
+  $("slotShareBtn").addEventListener("click", () => markShared());
   $("shareQrDownload").addEventListener("click", async () => {
     const blob = await CupoShare.qrPngBlob($("shareLink").value, 1024);
     if (!blob) { showToast("No se pudo generar la imagen."); return; }
@@ -1574,13 +1656,22 @@
   });
   $("sharePrint").addEventListener("click", () => {
     markShared();
-    setTimeout(() => window.print(), 60);
+    // La regla de impresión del cartel solo vale mientras esta clase esté puesta:
+    // así Ctrl+P en cualquier otra página (o en esta, a mano) imprime normal.
+    const root = document.documentElement;
+    root.classList.add("printing-poster");
+    const done = () => { root.classList.remove("printing-poster"); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    setTimeout(() => {
+      try { window.print(); } finally { setTimeout(done, 1500); }
+    }, 60);
   });
 
-  async function render({ silent } = {}) {
+  // reuse: justo después de la carga inicial el negocio ya está en memoria (antes se descargaba dos veces seguidas).
+  async function render({ silent, reuse } = {}) {
     let fresh;
     try {
-      fresh = await getBusiness();
+      fresh = reuse ? business : await getBusiness();
     } catch (err) {
       console.error("render failed:", err);
       // Silencioso en el refresco de fondo y justo después de una acción que
@@ -1592,7 +1683,7 @@
     if (!fresh) {
       // La cuenta ya no existe de verdad: a iniciar sesión otra vez.
       await DataStore.clearSession();
-      window.location.href = "auth.html?mode=login&role=negocio";
+      goToNegocioLogin();
       return;
     }
     business = fresh; // solo se reemplaza si llegó algo válido (antes un fallo dejaba la pantalla "muerta")
@@ -1609,13 +1700,13 @@
       console.error("getSales failed:", err);
     }
     buildDayIndex();
-    renderOnboarding();
-    // El aviso de "programa tu horario" solo sale si la lista de primeros pasos no está visible (no repetir).
-    $("scheduleNudge").hidden = S.activeRules(business).length > 0 || !$("onboarding").hidden;
-    renderStats();
-    renderCalendar();
-    renderDay();
-    renderBookings();
+    keepFocus(() => {
+      renderOnboarding(); // también decide si se ve el aviso viejo de "programa tu horario"
+      renderStats();
+      renderCalendar();
+      renderDay();
+      renderBookings();
+    });
   }
 
   // El horario semanal solo lo puede "publicar" el propio negocio, así que
@@ -1640,7 +1731,7 @@
     }
   }
 
-  await render();
+  await render({ reuse: true });
   await syncIfNeeded();
 
   // negocio.html?compartir=1 (desde "Compartir" en Ventas) abre directo el kit para compartir.

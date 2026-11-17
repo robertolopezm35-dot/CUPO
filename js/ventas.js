@@ -1,10 +1,16 @@
 (async function () {
+  // Sin sesión de negocio: al login de negocio, y después de entrar se regresa a esta misma página
+  // (antes se perdía el destino, p. ej. negocio.html?compartir=1 o Ventas). replace: "Atrás" no vuelve a una página que redirige.
+  function goToNegocioLogin() {
+    const here = window.location.pathname.split("/").pop() || "negocio.html";
+    window.location.replace("auth.html?mode=login&role=negocio&reason=negocio&next=" + encodeURIComponent(here + window.location.search));
+  }
   let session;
   let business;
   try {
     session = await DataStore.getSession();
     if (!session || session.role !== "negocio") {
-      window.location.href = "auth.html?mode=login&role=negocio";
+      goToNegocioLogin();
       return;
     }
     // Cupos de una ventana alrededor de hoy (para ocupación y "cupos libres por llenar").
@@ -18,7 +24,7 @@
   }
   if (!business) {
     await DataStore.clearSession();
-    window.location.href = "auth.html?mode=login&role=negocio";
+    goToNegocioLogin();
     return;
   }
   DataStore.watchSessionChange();
@@ -287,7 +293,7 @@
     const min = Math.min(...hours);
     const max = Math.max(...hours);
     const rows = [];
-    for (let h = min; h <= max; h++) rows.push({ label: h + ":00", value: byHour.get(h) || 0 });
+    for (let h = min; h <= max; h++) rows.push({ label: hourLabel(h), value: byHour.get(h) || 0 });
     return rows;
   }
 
@@ -374,7 +380,7 @@
     if (!priced.length) {
       let msg;
       if (!published) {
-        msg = 'Aún no publicas cupos. Define tu horario semanal en <a href="negocio.html">Mi agenda</a> y se publican solos.';
+        msg = 'Aún no publicas cupos. Define tu horario semanal en <a href="negocio.html">Mi agenda</a> y se publican al abrir tu panel.';
       } else if (slots.length) {
         msg = 'Tienes cupos libres por venir, pero sin un servicio con precio. Revisa tu catálogo en <a href="negocio.html">Mi agenda</a>.';
       } else if (ahead.some((s) => s.status === "booked")) {
@@ -404,7 +410,7 @@
       <div class="fill-days">
         ${days.map(([k, v]) => `<div class="rank-row"><span class="rank-name">${k === todayKey ? "Hoy" : esc(new Date(k).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" }))}</span><span class="rank-count">${v.count} cupo${v.count === 1 ? "" : "s"}</span><span class="rank-amount">${MONEY(v.amount)}</span></div>`).join("")}
       </div>
-      <p class="fill-tip">Tip: un descuento de último momento en los cupos de hoy suele llenarlos más rápido que dejarlos vacíos. Ponlo desde <a href="negocio.html">Mi agenda</a> tocando un cupo.</p>`;
+      <p class="fill-tip">Tip: si te quedan cupos libres, puedes ponerles un descuento desde <a href="negocio.html">Mi agenda</a> (toca un cupo) y avisarlos con tu link por WhatsApp.</p>`;
   }
 
   function renderClientMix(mixEl, topEl, done) {
@@ -499,12 +505,21 @@
       .sort((a, b) => whenOf(b) - whenOf(a));
   }
 
+  // Mismo estilo de hora que el historial ("5 p.m."), en vez de "17:00" en la gráfica y "5:00 p.m." en la lista.
+  function hourLabel(h) {
+    if (h === 0) return "12 a.m.";
+    if (h < 12) return h + " a.m.";
+    if (h === 12) return "12 p.m.";
+    return (h - 12) + " p.m.";
+  }
+
   function renderSalesList(win, now) {
     const container = document.getElementById("salesList");
     const more = document.getElementById("histMore");
     const rows = historyRows(win, now);
     if (!rows.length) {
-      container.innerHTML = '<div class="empty-state">No hay citas con ese filtro en este período.</div>';
+      const filtering = histQuery.trim() || histFilter !== "all";
+      container.innerHTML = '<div class="empty-state">' + (filtering ? "No hay citas con ese filtro en este período." : "Todavía no hay citas en este período.") + "</div>";
       more.hidden = true;
       return;
     }
@@ -638,7 +653,7 @@
     document.getElementById("statTicket").textContent = MONEY(done.length ? total / done.length : 0);
     const unique = new Set(done.map(clientKey));
     document.getElementById("statClients").textContent = unique.size;
-    document.getElementById("statClientsDetail").textContent = done.length > unique.size ? "Regresaron " + (done.length - unique.size) + " vez/veces" : "";
+    document.getElementById("statClientsDetail").textContent = done.length > unique.size ? "Regresaron " + (done.length - unique.size) + ((done.length - unique.size) === 1 ? " vez" : " veces") : "";
 
     const prevWin = previousWindow(win, period, now);
     const prevTotal = prevWin ? sum(allSales.filter((s) => inWin(s, prevWin) && stateOf(s, now) === "realizada")) : 0;

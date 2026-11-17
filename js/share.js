@@ -3,8 +3,28 @@
 // servicio externo). Sin base de datos y sin estado: lo usan el panel del negocio y el del cliente.
 const CupoShare = (() => {
   // Un link absoluto a otra página del propio sitio (funciona igual en mycupo.com que en github.io/CUPO/).
+  function siteBase() {
+    const cfg = window.SITE_CONFIG && String(window.SITE_CONFIG.baseUrl || "").trim();
+    if (cfg) {
+      try {
+        const u = new URL(cfg.endsWith("/") ? cfg : cfg + "/");
+        if (u.protocol === "https:" || u.protocol === "http:") return u.href;
+      } catch (err) { /* baseUrl mal escrita: se usa la dirección actual */ }
+    }
+    return window.location.href;
+  }
+  // ¿Esta página se abrió desde una dirección real (no localhost, no un archivo local)?
+  // Un link o QR sacado de una versión de prueba no sirve fuera de ahí.
+  function isLiveHost() {
+    try {
+      const u = new URL(siteBase());
+      return !(u.protocol === "file:" || /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(u.hostname) || u.hostname.endsWith(".local"));
+    } catch (err) {
+      return false;
+    }
+  }
   function pageUrl(file, params) {
-    const url = new URL(file, window.location.href);
+    const url = new URL(file, siteBase());
     Object.entries(params || {}).forEach(([key, value]) => {
       if (value != null && value !== "") url.searchParams.set(key, value);
     });
@@ -20,7 +40,19 @@ const CupoShare = (() => {
   // ── Mensajes ─────────────────────────────────────────────────────────────
   // Para que el negocio se lo mande a SUS clientes (WhatsApp, estados, grupos).
   function inviteMessage(business) {
-    return "¡Hola! Ya puedes reservar tu cita en " + business.name + " desde tu celular, sin escribir y viendo los horarios libres: " + bookingLink(business.id);
+    return "¡Hola! Ya puedes reservar tu cita en " + business.name + " desde tu celular, sin escribir y viendo los horarios libres (la primera vez te pide crear una cuenta rápida): " + bookingLink(business.id);
+  }
+
+  // WhatsApp da formato con * _ ~ ` : un nombre de negocio con esos signos rompería el texto en negritas.
+  const waSafe = (text) => String(text == null ? "" : text).replace(/[*_~`]/g, "");
+
+  // "Hoy" / "Mañana" / "Jue 12 nov" para un cupo de otro día (cuando el mensaje no es de hoy).
+  function dayWordOf(ts) {
+    const startOf = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+    const diff = Math.round((startOf(ts) - startOf(Date.now())) / 86400000);
+    if (diff === 0) return "Hoy";
+    if (diff === 1) return "Mañana";
+    return new Date(ts).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }).replace(/\.$/, "").replace(/^\w/, (c) => c.toUpperCase());
   }
 
   // Texto corto para la descripción de Instagram / Facebook / Google.
@@ -28,17 +60,19 @@ const CupoShare = (() => {
     return "📅 Reserva tu cita al instante: " + bookingLink(business.id);
   }
 
-  function slotText(business, slot) {
+  function slotText(business, slot, withDay) {
     const info = CupoSchedule.describeSlot(business, slot);
     const price = info.bookable ? (info.from ? "desde " + money(info.price) : money(info.price)) : "";
     const what = info.bookable && !info.from && info.service ? info.service : "";
     const off = slot.discountPct > 0 ? " (-" + slot.discountPct + "%)" : "";
-    return [slot.label, [what, price + off].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
+    const when = withDay && slot.time ? dayWordOf(slot.time) + " " + slot.label : slot.label;
+    return [when, [what, price + off].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
   }
 
   // Un solo cupo (botón en el detalle del cupo): el link abre justo ese cupo.
   function slotMessage(business, slot) {
-    return "✨ ¡Cupo libre en " + business.name + "! " + slotText(business, slot) + ".\nReserva en un toque 👉 " + bookingLink(business.id, slot.id);
+    // Con el día: un cupo de mañana o de la semana que entra sin decir cuándo es confunde (y lo reserva otro día).
+    return "✨ ¡Cupo libre en " + business.name + "! " + slotText(business, slot, true) + ".\nReserva en un toque 👉 " + bookingLink(business.id, slot.id);
   }
 
   // Todos los cupos libres que quedan (hoy): el negocio los manda y llena el día.
@@ -47,7 +81,7 @@ const CupoShare = (() => {
     const shown = slots.slice(0, limit);
     const lines = shown.map((s) => "• " + slotText(business, s));
     if (slots.length > shown.length) lines.push("• y " + (slots.length - shown.length) + " más");
-    return "✨ *Cupos libres hoy en " + business.name + "*\n" + lines.join("\n") + "\nReserva en un toque 👉 " + bookingLink(business.id);
+    return "✨ *" + (slots.length === 1 ? "Cupo libre hoy en " : "Cupos libres hoy en ") + waSafe(business.name) + "*\n" + lines.join("\n") + "\nReserva en un toque 👉 " + bookingLink(business.id);
   }
 
   // Para que un cliente invite a su barbería/salón favorito a sumarse (así crece la oferta).
@@ -152,5 +186,5 @@ const CupoShare = (() => {
     return String(name || "negocio").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "negocio";
   }
 
-  return { pageUrl, bookingLink, forBusinessesLink, whatsappShareUrl, inviteMessage, bioText, slotText, slotMessage, slotsMessage, inviteBusinessMessage, qrSvg, qrPngBlob, downloadBlob, copyText, slugForFile };
+  return { pageUrl, isLiveHost, bookingLink, forBusinessesLink, whatsappShareUrl, inviteMessage, bioText, slotText, slotMessage, slotsMessage, inviteBusinessMessage, qrSvg, qrPngBlob, downloadBlob, copyText, slugForFile };
 })();

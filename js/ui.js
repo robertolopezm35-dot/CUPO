@@ -180,5 +180,18 @@ const CupoUI = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
-  return { fatal, labelFields };
+  // Cierra un modal al hacer clic en el fondo, pero NO cuando alguien selecciona texto dentro (arrastrar
+  // y soltar fuera del cuadro generaba un "clic" en el fondo y cerraba el modal perdiendo lo escrito).
+  // Un clic sin mousedown previo (teclado, programático) sí cierra.
+  function overlayClose(overlay, close) {
+    let downOnOverlay;
+    overlay.addEventListener("mousedown", (e) => { downOnOverlay = e.target === overlay; });
+    overlay.addEventListener("click", (e) => {
+      const ok = e.target === overlay && downOnOverlay !== false;
+      downOnOverlay = undefined;
+      if (ok) close();
+    });
+  }
+
+  return { fatal, labelFields, overlayClose };
 })();

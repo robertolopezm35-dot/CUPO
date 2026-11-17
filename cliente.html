@@ -11,7 +11,7 @@
 <meta property="og:title" content="Cupos disponibles hoy — CUPO">
 <meta property="og:description" content="Cupos libres en negocios de Monterrey. Reserva al instante y paga en el negocio.">
 <meta property="og:url" content="https://mycupo.com/cliente.html">
-<meta property="og:image" content="https://mycupo.com/assets/og-image.png">
+<meta property="og:image" content="https://mycupo.com/assets/og-image.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#4F46E5">
 <link rel="manifest" href="manifest.webmanifest">
@@ -85,6 +85,7 @@
     <p>Muy pronto podrás encontrar citas médicas de último momento aquí.</p>
   </div>
 
+  <p id="listStatus" class="sr-only" role="status" aria-live="polite"></p>
   <div id="businessList"></div>
   <div class="more-wrap"><button type="button" class="btn btn-outline" id="moreBusinessesBtn" hidden>Ver más negocios</button></div>
 
@@ -159,7 +160,7 @@
       </div>
       <div class="field">
         <label>Comentario (opcional)</label>
-        <textarea id="reviewComment" rows="3" placeholder="¿Cómo te fue?"></textarea>
+        <textarea id="reviewComment" rows="3" maxlength="1000" placeholder="¿Cómo te fue? (máx. 1000 caracteres)"></textarea>
       </div>
       <div class="field">
         <label>Agregar una foto (opcional)</label>
@@ -180,6 +181,7 @@
 <script src="js/validate.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/contact.js"></script>
+<script src="js/site-config.js"></script>
 <script src="js/share.js"></script>
 <script src="js/store.js"></script>
 <script src="js/supabase-config.js"></script>

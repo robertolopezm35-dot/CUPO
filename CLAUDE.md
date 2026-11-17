@@ -42,12 +42,23 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
 - `js/contact.js` — `CupoContact`: links de WhatsApp/llamada/mapa y archivo de calendario
   (`.ics`). Sin DOM ni base; lo usan Ventas, el panel del negocio y el del cliente.
 - `js/site-config.js` — `SITE_CONFIG.contactEmail` (vacío): el correo que muestran las
-  páginas legales. Mientras esté vacío dicen que se publicará, sin inventar uno.
+  páginas legales; mientras esté vacío dicen que se publicará, sin inventar uno. Y
+  `SITE_CONFIG.baseUrl` (vacío): la dirección pública (ej. `https://mycupo.com/`) que usan el link, el
+  QR y el cartel del negocio; vacío = la dirección desde la que se abrió la página.
+- `negocios.html` + `js/negocios.js` — página "Para negocios" (pitch, calculadora de "¿cuánto te
+  cuesta un hueco?" con SOLO los números que escribe quien la usa, capturas, FAQ).
+- `js/share.js` — `CupoShare`: links directos, mensajes de WhatsApp/Instagram, QR (con
+  `js/vendor/qrcode.js`, librería MIT qrcode-generator 1.4.4 incluida en el repo: ningún dato sale a un
+  servicio externo para generar el QR), copiar al portapapeles. Sin DOM propio ni base.
+- `js/session-hint.js` — en la landing y en "Para negocios" (que no cargan la base) cambia "Iniciar sesión /
+  Crear cuenta" por "Ir a mi panel" si hay sesión; solo lee el almacenamiento del navegador.
 - `privacidad.html` / `terminos.html` — aviso de privacidad (LFPDPPP, derechos ARCO) y
   términos y condiciones. Borradores generales, **revísalos con un abogado**.
 - `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, `assets/icon-*.png`,
-  `assets/apple-touch-icon.png`, `assets/og-image.png` — instalable en el celular, SEO y
-  la vista previa al compartir el link.
+  `assets/apple-touch-icon.png`, `assets/og-image.jpg` (64 KB: WhatsApp suele omitir
+  previews de más de ~300 KB) — instalable en el celular, SEO y la vista previa al compartir el link.
+  `manifest-negocio.webmanifest` es el de las páginas del negocio (al instalar desde la agenda abre la
+  agenda, no los cupos de clientes).
 - `db/migracion-ventas-agenda.sql` — lo que le falta a una base que ya tenía
   `schema.sql` + `migracion-horario-semanal.sql` para la ronda "Investigación y mejoras"
   (ver abajo). Idempotente; una instalación nueva no la necesita.
@@ -75,8 +86,10 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   qué dominio propio debe servir — ver "Dominio propio: mycupo.com" abajo.
 - `favicon.svg` — ícono del navegador, el mismo círculo índigo con "C" del logo.
 - `404.html` — página de error con la marca de CUPO; GitHub Pages la sirve sola.
-- `assets/app-screenshot.png` — screenshot real de `cliente.html` usado como mockup
-  en el hero del landing (`index.html`).
+- `assets/app-screenshot.jpg`, `assets/negocio-agenda.jpg`, `assets/negocio-ventas.jpg` — capturas de la
+  interfaz de hoy con **negocios ficticios** (nombres inventados; antes salían negocios reales con
+  calificaciones inventadas) para el hero del landing y `negocios.html`. Si cambia mucho la interfaz,
+  hay que regenerarlas (el guion vive fuera del repo).
 
 ## Base de datos: Supabase
 
@@ -969,7 +982,111 @@ Ventas, 43 del dashboard, 37 del cliente, 31 de confianza, 21 de agenda, 20 de r
 casos límite. Varias pruebas viejas tuvieron que cambiar porque el comportamiento cambió a
 propósito (tope/encimes, renombrar servicios, catálogo sin repetidos, contraseña de 6).
 
+## Ronda 3: rutas, adopción y cacería de bugs (17 nov 2026)
+
+Se pidió volver a investigar el diseño de las **rutas dentro de la página**, qué no le gustaría a la
+gente y cómo lograr que **clientes** y **negocios** sí la usen; construirlo; y lanzar bots que recorran
+**todas** las rutas para que no quede nada suelto.
+
+**Decisiones de producto de esta ronda**
+
+- **Herramienta útil desde el día 1 ("single-player first").** Un negocio nuevo no debería tener que
+  esperar a que lleguen clientes nuevos para ver valor: `negocio.html` trae una lista de 4 primeros
+  pasos (servicios con precio → horario → teléfono → compartir) y un kit "Compartir" (link, QR,
+  texto para Instagram, cartel imprimible, y "avisar mis cupos de hoy" por WhatsApp). Sirve con los
+  clientes que el negocio ya tiene.
+- **Nada de cifras inventadas.** `negocios.html` no promete resultados: la calculadora multiplica lo que
+  escribe la persona (huecos × precio × 4.3 semanas) y lo dice. Las capturas usan negocios ficticios.
+  "Los cupos se publican solos" se corrigió: **los publica el propio negocio cada vez que abre su panel**
+  (próximas 4 semanas); si pasa semanas sin entrar se le acaban (ver Pendiente: `pg_cron`).
+- **Rutas visibles y compartibles.** Barra de secciones (`.subnav`) en cliente/negocio/ventas; el logo
+  lleva "a tu casa" según la sesión; `cliente.html` guarda en la URL categoría, día, "próximas 2 horas",
+  búsqueda, descuento, servicio y horario (`?categoria=Spa&dia=2&q=…`); si hoy ya no hay cupos abre en el
+  día más cercano que sí tiene y lo avisa.
+- **Un link de negocio abre ESE negocio.** `cliente.html?negocio=ID` (lo que comparte el kit y lo que
+  imprime el QR) muestra solo ese negocio, salta al día de **su** próximo cupo y ofrece "Ver más
+  negocios"; antes caía en el directorio completo, con la competencia al lado. Un id inválido avisa
+  "No encontramos ese negocio". Los filtros de servicio/horario/descuento afinan sus cupos sin sacarte de
+  ahí; buscar, cambiar de categoría, favoritos, cercanía o "2 horas" sí. `?negocio=ID&slot=ID` abre ese
+  cupo aunque sea de dentro de 4 semanas (hay una pestaña extra para ese día).
+- **Registro/login que no pierden el destino.** `auth.html` valida `next` con `URL()` (solo páginas propias
+  y del rol), muestra "Ya tienes una sesión abierta" (sin redirigir solo), se sincroniza con la URL
+  (`?mode=login&role=negocio`), enfoca el error y orienta si se eligió la pestaña equivocada.
+  `negocio.html`/`ventas.html` sin sesión mandan al login de negocio y regresan a donde ibas
+  (p. ej. `negocio.html?compartir=1`).
+- **Honestidad en lo que se ve:** un negocio sin reseñas dice "Nuevo" (no un ★ 5.0 inventado); un negocio
+  sin cupos publicados lo dice y ofrece WhatsApp/Llamar si tiene teléfono; el modal de compartir avisa
+  que el cliente crea una cuenta rápida la primera vez; cada estado vacío explica **su** causa (sin
+  favoritos, búsqueda sin resultados, filtros sin cupos —y solo ofrece "Ver {día}" si ese día de verdad
+  tiene—, próximas 2 horas).
+
+**Cacería de bugs con 6 bots (rutas de auth, mapa del sitio, cliente, negocio, público/landing/ventas,
+Supabase local y transversal).** Reportaron ~120 hallazgos (1 ALTA, ~30 MEDIA); se corrigió todo lo real:
+
+- **ALTA (mío):** el CSS de impresión del cartel era global y **dejaba en blanco la impresión de
+  cualquier página**. Ahora solo aplica mientras se imprime el cartel (`html.printing-poster`).
+- **Cliente:** el aviso "Lo más pronto" decía "Hoy ya hay cupos libres" cuando era lo contrario; cupos
+  compartidos a más de 6 días decían "ya no está disponible"; con la base caída un visitante veía
+  esqueletos grises para siempre (ahora hay aviso con Reintentar); filtros del celular invisibles al
+  cerrarlos (ahora un contador); la franja horaria dejaba huecos (<8 h y ≥21 h); parámetros de URL
+  sensibles a mayúsculas/acentos; reseña de más de 1000 caracteres cerraba el modal y perdía el texto;
+  modales que se cerraban al arrastrar para seleccionar texto (`CupoUI.overlayClose`); números sin escapar.
+- **Negocio:** el refresco de 20 s y elegir un día con teclado **destruían el foco** (ahora se conserva);
+  el paso "Comparte" se marcaba con cualquier cita o aunque copiar fallara; "Ocultar" era irreversible
+  (ahora "Ocultar por ahora" + "Mostrar los primeros pasos"); el mensaje de un cupo de otro día no decía
+  el día; teléfono `abc` y servicio de $0 se aceptaban; nombres largos sin espacios desbordaban.
+- **Auth/Supabase:** con `/profiles` caído el login decía "Esa cuenta no es de cliente" y cerraba la
+  sesión; un login con rol equivocado **destruía la sesión que ya estaba abierta** (ahora se restaura, y
+  el cierre es solo local); renovar el token en una pestaña **recargaba las demás** y perdía lo escrito
+  (ahora solo se recarga si cambia la persona); peticiones de más (`negocio.html`: de 10 a 5 peticiones y
+  de 3 a 2 descargas del negocio al abrir; un visitante ya no pide `get_my_sales`).
+- **Resiliencia:** con `localStorage` bloqueado o lleno la demostración ya no revienta (guarda en memoria).
+- **Textos/legal/SEO:** términos decían "quien reservó puede reseñar" (la regla es "quien fue atendido");
+  privacidad ahora menciona clientes agendados a mano, WhatsApp/llamadas y jsDelivr; `robots.txt` ya no
+  bloquea las páginas privadas (sus `noindex` nunca se leían); `negocios.html` con descripción de 143
+  caracteres; 404 con ruta base correcta en rutas anidadas; skip-links en landing/legales/404.
+
+**Decisiones reversibles que tomé:** `Ocultar` no borra nada, solo guarda una bandera en el navegador (por
+eso en otro dispositivo la lista puede volver a verse); un servicio con precio $0 ya no se puede guardar;
+`manifest-negocio.webmanifest` separado; el link/QR de un entorno de prueba (`localhost`) se marca como
+"versión de prueba".
+
+**Lo que se dejó a propósito (prioridad baja o necesita una decisión tuya):** "Atrás" con un modal abierto
+sale de la página (los modales no tienen historial); `<title>` dinámico en `cliente.html`; objetivos táctiles
+de 40 px en "Salir"/logo y celdas del calendario a 320 px (cumplen el mínimo de WCAG 2.2 AA de 24 px);
+"Descanso" cortado en una celda angosta del calendario; handlers `onerror`/`onsubmit` en línea (impiden
+una CSP estricta); el onboarding vive por navegador; el cambio de la franja "Mañana" a las 00:00 con la
+página abierta se avisa pero no se anima; **`CLAUDE.md` y `db/*.sql` se sirven en el sitio publicado**
+(ver "Contraseñas en este archivo" abajo).
+
+**Cómo se probó** (todo pasa): 98 verificaciones nuevas de esta ronda en localStorage
+(`round3-fixes-test`) y 13 en Supabase local (`round3-sb-test`: base caída, login con rol equivocado y con
+`/profiles` en 500, renovación de token en otra pestaña, conteo de peticiones); las suites anteriores (unitarias,
+ventas 43+20, agenda 21, cliente 37, confianza 31, regresión 21, cacería 54, rutas 67, casos límite 29,
+e2e 88 en localStorage y 87 contra Postgres migrado / nuevo / de hoy, 116 SQL ×2, 18 ventas ×2 + 13 sin
+migrar, 15 sin migración, 15 de resiliencia); sin scroll horizontal a 320/360/390/1280 px con nombres de 60
+caracteres; auditoría de contraste sin fallos. Varias pruebas viejas cambiaron a propósito (el link
+`?negocio=ID` ahora muestra un solo negocio, robots, FAQ de 7 preguntas, servicio de $0, hora "9 a.m.").
+**No se corrió la pasada en vivo con escritura contra el Supabase real** en esta ronda (solo una lectura como
+visitante, sin errores); los cambios que tocan Supabase se probaron en Postgres local con el esquema
+de hoy. Si quieres, se corre `live.js` con las cuentas marcadas `prueba.*@cupo.mx`.
+
 ## Pendiente / decisiones abiertas
+
+**Nuevo (17 nov 2026) — necesita algo tuyo:**
+
+- **Contraseñas y SQL en el sitio publicado.** `CLAUDE.md` (con las contraseñas de las cuentas demo y de
+  prueba del Supabase real) y `db/*.sql` están en la rama que sirve GitHub Pages: cualquiera puede abrir
+  `/CLAUDE.md` en el navegador. Cambia las contraseñas `demo.*@cupo.mx`, borra las cuentas `prueba.*@cupo.mx`
+  y, si quieres, mueve `CLAUDE.md` y `db/` a otra rama o repo. No lo toqué sin tu respuesta.
+- **Reclutar negocios reales antes de abrir al público.** Recomendación: NO sembrar disponibilidad falsa en
+  producción; conseguir 5–10 negocios de una sola zona y categoría, ayudarlos a programar su horario y
+  compartir su link/QR con sus clientes de siempre.
+- **`SITE_CONFIG.baseUrl`** (en `js/site-config.js`): ponla en `https://mycupo.com/` cuando el dominio ya
+  tenga HTTPS, para que el QR y los cartelitos impresos no dependan de la dirección desde la que se abre
+  el panel.
+- Confirmar el texto "Hoy no se cobra por usar CUPO" de `negocios.html` (es promesa de producto: quítala si
+  el modelo de cobro cambia).
 
 **Nuevo (12 nov 2026) — necesita algo tuyo:**
 

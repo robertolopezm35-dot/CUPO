@@ -33,7 +33,8 @@ const CupoValidate = (() => {
   // Vacío es válido (el teléfono casi siempre es opcional): regresa phone "".
   function phone(input) {
     let d = digits(input);
-    if (!d) return { ok: true, phone: "" };
+    // Texto sin ningún dígito ("abc") no es "sin teléfono": antes se guardaba vacío avisando "Perfil actualizado".
+    if (!d) return String(input == null ? "" : input).trim() ? { ok: false, error: "El teléfono debe tener 10 dígitos (puedes pegarlo con +52)." } : { ok: true, phone: "" };
     if (d.length === 13 && d.startsWith("521")) d = d.slice(3);
     else if (d.length === 12 && d.startsWith("52")) d = d.slice(2);
     if (d.length !== 10) return { ok: false, error: "El teléfono debe tener 10 dígitos (puedes pegarlo con +52)." };
@@ -94,7 +95,7 @@ const CupoValidate = (() => {
     return { ok: true, duration: durationValue, price: priceValue, pct };
   }
 
-  // Catálogo de servicios: nombre 1–80, precio entero 0–100,000, sin nombres repetidos.
+  // Catálogo de servicios: nombre 1–80, precio entero 1–100,000, sin nombres repetidos.
   function catalog(rows) {
     const seen = new Set();
     const out = [];
@@ -106,6 +107,7 @@ const CupoValidate = (() => {
       if (raw === "") return { ok: false, error: "Ponle precio a “" + name + "” (o quítalo de tu catálogo)." };
       if (!isInt(raw)) return { ok: false, error: "El precio de “" + name + "” debe ser un número entero, sin signos ni decimales." };
       const price = parseInt(raw, 10);
+      if (price < 1) return { ok: false, error: "El precio de “" + name + "” debe ser de al menos $1 (los cupos salen de este precio)." };
       if (price > LIMITS.priceMax) return { ok: false, error: "El precio de “" + name + "” no puede pasar de $" + LIMITS.priceMax.toLocaleString("es-MX") + "." };
       const key = fold(name);
       if (seen.has(key)) return { ok: false, error: "“" + name + "” está repetido en tu catálogo." };

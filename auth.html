@@ -20,6 +20,8 @@
 
 <main class="auth-wrap" id="main" tabindex="-1">
   <div class="auth-card">
+    <div class="auth-notice" id="sessionNotice" hidden></div>
+    <p class="sr-only" id="authStatus" role="status" aria-live="polite"></p>
     <div class="role-toggle" role="group" aria-label="Tipo de cuenta">
       <button type="button" id="roleClienteBtn" class="active" aria-pressed="true">Cliente</button>
       <button type="button" id="roleNegocioBtn" aria-pressed="false">Negocio</button>
@@ -29,7 +31,9 @@
     <p class="sub" id="authSub">Encuentra citas de último momento cerca de ti.</p>
     <p class="auth-aside" id="authAside" hidden>¿Primera vez aquí? <a href="negocios.html">Mira cómo funciona CUPO para negocios</a>.</p>
 
-    <div class="error-msg" id="errorMsg"></div>
+    <p class="auth-back" id="authBack" hidden><a href="cliente.html">← Volver a los cupos</a></p>
+
+    <div class="error-msg" id="errorMsg" tabindex="-1"></div>
 
     <!-- REGISTER: CLIENTE -->
     <form class="form-panel" id="registerClienteForm" data-role="cliente" data-mode="register">
@@ -51,12 +55,12 @@
         <label for="registerPhone">Teléfono</label>
         <div class="phone-row">
           <select name="countryIso" id="countryCodeSelect" aria-label="País del teléfono"></select>
-          <input type="tel" name="phone" id="registerPhone" inputmode="numeric" maxlength="10" pattern="\d{10}" placeholder="10 dígitos" autocomplete="tel-national" required>
+          <input type="tel" name="phone" id="registerPhone" inputmode="tel" placeholder="10 dígitos" autocomplete="tel-national" required>
         </div>
       </div>
       <div class="field">
         <label>Contraseña</label>
-        <input type="password" name="password" autocomplete="new-password" required minlength="6">
+        <input type="password" name="password" autocomplete="new-password" required minlength="6" placeholder="Mínimo 6 caracteres">
       </div>
       <label class="accept-row"><input type="checkbox" name="accept" required> <span>Acepto los <a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones</a> y el <a href="privacidad.html" target="_blank" rel="noopener">Aviso de privacidad</a>.</span></label>
       <button type="submit" class="btn btn-primary btn-block">Crear cuenta de cliente</button>
@@ -82,7 +86,7 @@
       </div>
       <div class="field">
         <label>Contraseña</label>
-        <input type="password" name="password" autocomplete="new-password" required minlength="6">
+        <input type="password" name="password" autocomplete="new-password" required minlength="6" placeholder="Mínimo 6 caracteres">
       </div>
       <label class="accept-row"><input type="checkbox" name="accept" required> <span>Acepto los <a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones</a> y el <a href="privacidad.html" target="_blank" rel="noopener">Aviso de privacidad</a>.</span></label>
       <button type="submit" class="btn btn-primary btn-block">Registrar mi negocio</button>
@@ -118,10 +122,13 @@
 
     <!-- RECUPERAR CONTRASEÑA -->
     <form class="form-panel" id="forgotPasswordForm">
-      <div class="field">
-        <label>Correo</label>
-        <input type="email" name="email" autocomplete="email" required>
+      <div id="forgotFields">
+        <div class="field">
+          <label for="forgotEmail">Correo</label>
+          <input type="email" name="email" id="forgotEmail" autocomplete="email" required>
+        </div>
       </div>
+      <div class="auth-success" id="forgotSuccess" role="status" hidden></div>
       <button type="submit" class="btn btn-primary btn-block">Enviar link</button>
       <button type="button" class="btn-link-forgot" id="backToLoginBtn">← Regresar a iniciar sesión</button>
     </form>

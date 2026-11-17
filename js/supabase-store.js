@@ -156,7 +156,13 @@ const SupabaseStore = (() => {
     if (/rate limit|too many|seconds/i.test(text) && (error.status === 429 || /rate limit|too many/i.test(text))) return "Demasiados intentos. Espera unos minutos e intenta de nuevo.";
     if (/valid email|invalid email|email address .* is invalid/i.test(text)) return "Escribe un correo válido.";
     if (/Database error saving new user/i.test(text)) return "No pudimos crear tu cuenta. Revisa que tus datos no estén vacíos ni sean demasiado largos.";
-    return plainMessage(text);
+    if (/error sending (recovery|confirmation|magic ?link|email)|sending .*email/i.test(text)) return "No pudimos enviar el correo en este momento. Intenta de nuevo en unos minutos.";
+    if (/email not confirmed/i.test(text)) return "Falta confirmar tu correo: revisa tu bandeja (y spam) y toca el link que te enviamos.";
+    if (/user not found|user.*does not exist/i.test(text)) return "Correo o contraseña incorrectos.";
+    if (/signups? not allowed|signup is disabled/i.test(text)) return "El registro está desactivado por ahora.";
+    // Cualquier otro texto en inglés del servicio de cuentas no se muestra crudo.
+    const out = plainMessage(text);
+    return out === text && /^[\x20-\x7E]+$/.test(out) && /[a-z]{4,}/i.test(out) ? "No pudimos completar la operación. Intenta de nuevo; si sigue igual, escríbenos." : out;
   }
 
   // ¿El error de .single() significa "no existe" (0 filas) y no "falló"?
@@ -226,10 +232,22 @@ const SupabaseStore = (() => {
     slots(*, staff(name), reservations(*, clients(first_name, last_name)))
   `;
 
+  // Las ventas "propias" solo existen con sesión: un visitante no las pide (antes cada carga y cada refresco de
+  // 20 s hacían una petición inútil). Las llamadas casi simultáneas (la lista y la tarjeta cargan juntas) comparten
+  // una sola petición; pasado 1.5 s se vuelve a pedir, así que lo reservado/cancelado se ve al siguiente refresco.
+  let mySalesCache = null;
   async function getMySales() {
-    const { data, error } = await client.rpc("get_my_sales");
-    if (error) return [];
-    return (data || []).map(mapSale);
+    const { data: { session } } = await client.auth.getSession();
+    if (!session) return [];
+    const now = Date.now();
+    if (mySalesCache && mySalesCache.userId === session.user.id && now - mySalesCache.at < 1500) return mySalesCache.promise;
+    const promise = (async () => {
+      const { data, error } = await client.rpc("get_my_sales");
+      if (error) return [];
+      return (data || []).map(mapSale);
+    })();
+    mySalesCache = { userId: session.user.id, at: now, promise };
+    return promise;
   }
 
   async function getSession() {
@@ -261,11 +279,28 @@ const SupabaseStore = (() => {
   }
 
   async function login(role, email, password) {
+    // Si ya había una sesión abierta (otra cuenta), se recuerda: un intento que no procede (cuenta de otro rol,
+    // fallo al verificar) no debe dejar a la persona sin la sesión que tenía.
+    let previous = null;
+    try {
+      const { data: { session } } = await client.auth.getSession();
+      if (session) previous = { access_token: session.access_token, refresh_token: session.refresh_token };
+    } catch (err) { /* sin sesión previa legible */ }
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) return { ok: false, error: authError(error) };
-    const { data: profile } = await client.from("profiles").select("role").eq("id", data.user.id).single();
+    // scope "local": solo se descarta ESTA sesión (el cierre "global" por defecto saca a la cuenta de todos sus dispositivos).
+    const rollback = async () => {
+      try { await client.auth.signOut({ scope: "local" }); } catch (err) { /* ya estaba cerrada */ }
+      if (previous) { try { await client.auth.setSession(previous); } catch (err) { /* la previa ya había vencido */ } }
+    };
+    const { data: profile, error: profileError } = await client.from("profiles").select("role").eq("id", data.user.id).single();
+    if (profileError && !isNotFound(profileError)) {
+      // Un fallo de red o del servidor NO significa "cuenta de otro tipo": se pide reintentar.
+      await rollback();
+      return { ok: false, error: "No pudimos verificar tu cuenta en este momento. Revisa tu conexión e inténtalo de nuevo." };
+    }
     if (!profile || profile.role !== role) {
-      await client.auth.signOut();
+      await rollback();
       return { ok: false, error: "Esa cuenta no es de " + role + "." };
     }
     return { ok: true, id: data.user.id };
@@ -646,7 +681,10 @@ const SupabaseStore = (() => {
   // que corre cada vez que abre su panel — ver CLAUDE.md "Horario semanal".
   async function syncSchedule(businessId) {
     if (!(await ensureScheduleSupport())) return { ok: true, created: 0, removed: 0 };
-    const business = await getBusinessById(businessId);
+    // Solo hace falta lo cercano: lo ya pasado reciente (para limpiar cupos libres vencidos) y lo que viene
+    // (el horario se publica ~4 semanas adelante). Con historial largo, bajarlo todo era lo más pesado de cada carga.
+    const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+    const business = await getBusinessById(businessId, { slotsFrom: day0.getTime() - 60 * 86400000, slotsTo: day0.getTime() + 90 * 86400000 });
     if (!business) return { ok: false, error: "Negocio no encontrado." };
     const { toCreate, toRemove } = CupoSchedule.plan(business, Date.now());
 

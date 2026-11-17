@@ -1,0 +1,32 @@
+{
+  "name": "CUPO Negocios — Agenda y cupos",
+  "short_name": "CUPO Negocios",
+  "description": "Tu agenda, tus cupos y tus ventas en CUPO.",
+  "lang": "es-MX",
+  "id": "./negocio.html",
+  "start_url": "negocio.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F7F7FB",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
