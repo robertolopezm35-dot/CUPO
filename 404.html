@@ -37,5 +37,12 @@
   </div>
 </main>
 
+<script>
+  // Con <base href="/"> el href="#main" apuntaría a la portada: el enlace enfoca el contenido sin navegar.
+  document.querySelector(".skip-link").addEventListener("click", function (e) {
+    e.preventDefault();
+    document.getElementById("main").focus();
+  });
+</script>
 </body>
 </html>

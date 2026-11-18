@@ -24,6 +24,9 @@
   if (!role) return;
   const isNegocio = role === "negocio";
   document.querySelectorAll("[data-guest-only]").forEach((el) => { el.hidden = true; });
+  // Solo para cierto rol: p. ej. "Iniciar sesión" de negocios se oculta a un negocio, pero un cliente con sesión la conserva
+  // (puede tener también una cuenta de negocio).
+  document.querySelectorAll('[data-hide-for="' + role + '"]').forEach((el) => { el.hidden = true; });
   document.querySelectorAll("[data-session-link]").forEach((el) => {
     el.hidden = false;
     el.href = isNegocio ? "negocio.html" : "cliente.html";

@@ -346,6 +346,20 @@
     });
   });
 
+  // ── Almacenamiento bloqueado ───────────────────────────────────────────
+  // Si el navegador no deja guardar, la sesión vive solo en memoria y se pierde al cambiar de página: se avisa en vez
+  // de dejar a la persona en un login sin explicación.
+  (function () {
+    const notice = document.getElementById("storageNotice");
+    if (!notice) return;
+    try {
+      localStorage.setItem("cupo_probe", "1");
+      localStorage.removeItem("cupo_probe");
+    } catch (err) {
+      notice.hidden = false;
+    }
+  })();
+
   // ── Sesión ya abierta ────────────────────────────────────────────────────
   // Quien ya tiene sesión y abre esta página se entera (y puede ir a su panel o cerrarla) en vez de poder
   // registrar otra cuenta encima sin darse cuenta. No se redirige solo: puede haber llegado a propósito.
@@ -369,6 +383,9 @@
         try { await DataStore.clearSession(); } catch (err) { /* se avisa abajo */ }
         $sessionNotice.hidden = true;
         if ($authStatus) $authStatus.textContent = "Sesión cerrada.";
+        // El botón desapareció con el foco: se lleva al primer campo del formulario visible.
+        const firstField = document.querySelector(".form-panel.active input:not([type=hidden])");
+        if (firstField) firstField.focus();
       });
       $sessionNotice.append(text, go, out);
       $sessionNotice.hidden = false;

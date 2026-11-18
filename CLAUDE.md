@@ -1071,6 +1071,33 @@ caracteres; auditoría de contraste sin fallos. Varias pruebas viejas cambiaron 
 visitante, sin errores); los cambios que tocan Supabase se probaron en Postgres local con el esquema
 de hoy. Si quieres, se corre `live.js` con las cuentas marcadas `prueba.*@cupo.mx`.
 
+**Ronda 4: verificación con 2 bots (18 nov 2026).** Se relanzaron bots para comprobar los arreglos de la
+ronda 3 (`cliente` y `auth/negocio/landing`; el de Supabase se dejó fuera para cuidar el uso, porque las pruebas
+contra Postgres local ya cubren su terreno). Sin ALTA ni errores de JS; se corrigió todo lo real:
+
+- **Cliente:** en la vista de un negocio, el aviso "Lo más pronto" prometía un cupo que los filtros de
+  servicio/horario/descuento escondían (ahora respeta los filtros, la tarjeta dice "Los filtros elegidos esconden…" y
+  hay "Quitar filtros"); el foco caía a `<body>` al activar pestañas de día/área, chips y botones de avisos (ahora se
+  conserva); el negocio de la vista fija se relee con una ventana de ~2 meses (en Supabase, un negocio con su primer
+  cupo a más de 8 días parecía "sin cupos publicados"); `?dia=`/cupos compartidos hasta 60 días; `?horario=constructor`
+  ya no deja un filtro fantasma; horario/servicio/descuento se leen sin importar mayúsculas ni acentos; etiquetas del
+  filtro de horario coinciden con los rangos reales (Mañana = antes de 12, Noche = desde las 17); un `?negocio=`
+  inválido sale de la URL; la URL conserva el día al abrir la confirmación; el cambio de día tras varios días con la
+  pestaña oculta descuenta todos; un fallo de red con la lista ya pintada lo avisa en pantalla; el botón de salida de la
+  vista fija ahora dice "Ver todos los negocios" (distinto de la paginación).
+- **Negocio:** los cupos libres del panel del día y las "Próximas reservas" **no se podían usar con teclado**
+  (eran `<div>` con clic); ahora son `role=button` con Enter/Espacio. Los mensajes de WhatsApp (invitación y cupo suelto)
+  también limpian `* _ ~` del nombre.
+- **Auth/landing/404/CSS:** "Cerrar sesión" del aviso de sesión abierta lleva el foco al formulario; `auth.html` avisa si
+  el navegador no deja guardar la sesión; el skip-link de la 404 ya no sale a la portada; la calculadora sin JavaScript
+  muestra las cifras precargadas; un cliente con sesión conserva "Iniciar sesión" de negocios en `negocios.html`; la
+  portada ofrece "Ir a mi agenda" a un negocio; la negrita de los enlaces `.btn-link` se perdía por un `font: inherit`;
+  auth/reset-password imprimían una segunda hoja en blanco.
+- **Pruebas:** `round4-cliente-test` (13) y `round4-negocio-test` (13) en localStorage; el resto de las suites sin cambios
+  de resultado (e2e 88 local y 87 en Postgres migrado/nuevo, `round3-sb` 13, resiliencia 15).
+- **Sin cubrir por los bots** (límite de herramientas): modal "Cerrar este día", editor de horario con varias personas,
+  `localStorage` lleno, portapapeles denegado y el cartel impreso con un nombre larguísimo revisado a ojo.
+
 ## Pendiente / decisiones abiertas
 
 **Nuevo (17 nov 2026) — necesita algo tuyo:**

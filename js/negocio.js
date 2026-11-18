@@ -330,11 +330,22 @@
     }));
   }
 
+  // Elementos que no son <button> (cupos, filas) se activan igual con clic, Enter o Espacio.
+  function onActivate(el, fn) {
+    el.addEventListener("click", fn);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fn();
+      }
+    });
+  }
+
   function agendaSlotHtml(s, showStaff) {
     const d = S.describeSlot(business, s);
     const staff = showStaff && s.staffName ? `<span class="price">${esc(s.staffName)}</span>` : "";
     if (s.status === "booked") {
-      return `<div class="slot mine" data-slot="${s.id}" title="Clic para ver la cita">
+      return `<div class="slot mine" data-slot="${s.id}" role="button" tabindex="0" title="Clic para ver la cita">
         <span class="time">${s.label}</span>
         ${s.service ? `<span class="price">${esc(s.service)}</span>` : ""}
         <span class="price">$${s.price}</span>
@@ -343,13 +354,13 @@
       </div>`;
     }
     if (!d.bookable) {
-      return `<div class="slot available warn" data-slot="${s.id}" title="Agrega servicios con precio en Editar negocio para que se pueda reservar">
+      return `<div class="slot available warn" data-slot="${s.id}" role="button" tabindex="0" title="Agrega servicios con precio en Editar negocio para que se pueda reservar">
         <span class="time">${s.label}</span>
         <span class="price">Sin servicios</span>
         ${staff}
       </div>`;
     }
-    return `<div class="slot available" data-slot="${s.id}" title="Clic para editar, agendar o quitar">
+    return `<div class="slot available" data-slot="${s.id}" role="button" tabindex="0" title="Clic para editar, agendar o quitar">
       <span class="time">${s.label}</span>
       ${d.service ? `<span class="price">${esc(d.service)}</span>` : ""}
       <span class="price">${priceHtml(d)}${s.discountPct > 0 ? ` <span class="discount-badge">-${s.discountPct}%</span>` : ""}</span>
@@ -431,9 +442,7 @@
     } else {
       daySlots.innerHTML = `<div class="slot-list">${slots.map((s) => agendaSlotHtml(s, true)).join("")}</div>`;
     }
-    daySlots.querySelectorAll(".slot").forEach((el) => {
-      el.addEventListener("click", () => openSlotDetail(el.dataset.slot));
-    });
+    daySlots.querySelectorAll(".slot").forEach((el) => onActivate(el, () => openSlotDetail(el.dataset.slot)));
 
     // En un día cerrado un cupo nuevo no le saldría a ningún cliente: primero
     // hay que reabrirlo (botón del aviso de arriba).
@@ -1454,13 +1463,13 @@
     } else {
       const shown = upcoming.slice(0, 40);
       bookingsList.innerHTML = '<div class="biz-card">' + shown.map((s) =>
-        `<div class="reservation-row clickable" data-slot="${s.id}" title="Clic para ver la cita">
+        `<div class="reservation-row clickable" data-slot="${s.id}" role="button" tabindex="0" title="Clic para ver la cita">
           <span>${shortDate(s.time)} · ${s.label} · ${esc(s.clientName || "Reservado")}${s.service ? " · " + esc(s.service) : ""}${s.staffName ? " · con " + esc(s.staffName) : ""}</span>
           <strong>$${s.price}</strong>
         </div>`
       ).join("") + (upcoming.length > shown.length ? `<p class="field-hint" style="margin-top:10px">y ${upcoming.length - shown.length} más — búscalas en el calendario.</p>` : "") + '</div>';
       bookingsList.querySelectorAll("[data-slot]").forEach((row) => {
-        row.addEventListener("click", () => {
+        onActivate(row, () => {
           const slot = business.slots.find((s) => s.id === row.dataset.slot);
           if (!slot) return;
           selectDay(S.dateKey(slot.time));

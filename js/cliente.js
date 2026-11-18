@@ -99,7 +99,7 @@
   let reviewStars = 0;
   const PAGE_SIZE = 12;
   let visibleCount = PAGE_SIZE;
-  const MAX_DAY = 27; // un cupo compartido puede ser de hasta 4 semanas adelante (el negocio publica ~4 semanas)
+  const MAX_DAY = 60; // un cupo compartido puede ser de varias semanas adelante (el horario publica ~4; uno suelto puede ir más lejos)
 
   const dashTitleEl = document.getElementById("dashTitle");
   const areaTabsEl = document.getElementById("areaTabs");
@@ -147,13 +147,31 @@
     resetPaging();
   }
 
+  // Repintar pestañas/chips con innerHTML destruye el elemento enfocado: el teclado caía a <body> y el siguiente Tab
+  // empezaba desde "Hoy". Se recuerda cuál era (por sus data-*) y se le devuelve el foco.
+  function focusKeyIn(container) {
+    const a = document.activeElement;
+    if (!a || !container.contains(a)) return null;
+    const attrs = Array.from(a.attributes)
+      .filter((x) => x.name.startsWith("data-"))
+      .map((x) => "[" + x.name + '="' + CSS.escape(x.value) + '"]').join("");
+    return attrs ? a.tagName.toLowerCase() + attrs : null;
+  }
+  function restoreFocusKeyIn(container, key) {
+    if (!key) return;
+    const el = container.querySelector(key);
+    if (el) el.focus({ preventScroll: true });
+  }
+
   function renderAreaTabs() {
+    const focusKey = focusKeyIn(areaTabsEl);
     areaTabsEl.innerHTML = DataStore.AREAS.map((area) => `
       <button type="button" class="area-tab ${area.id === activeArea ? "active" : ""} ${area.comingSoon ? "coming-soon" : ""}" data-area="${area.id}" aria-pressed="${area.id === activeArea}">
         <span>${area.icon} ${area.name}</span>
         ${area.comingSoon ? '<span class="soon-badge">Pronto</span>' : ""}
       </button>
     `).join("");
+    restoreFocusKeyIn(areaTabsEl, focusKey);
 
     areaTabsEl.querySelectorAll(".area-tab").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -204,7 +222,9 @@
     if (dayOffset > 6 && !soonOnly) {
       html.push(`<button type="button" class="day-tab active" data-day="${dayOffset}" aria-pressed="true">${dayLabel(dayOffset)}</button>`);
     }
+    const dayFocusKey = focusKeyIn(dayTabsEl);
     dayTabsEl.innerHTML = html.join("");
+    restoreFocusKeyIn(dayTabsEl, dayFocusKey);
     dayTabsEl.classList.toggle("muted", soonOnly);
     dayTabsEl.querySelectorAll(".day-tab").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -239,10 +259,12 @@
     businessListEl.hidden = false;
     comingSoonPanel.hidden = true;
 
+    const chipFocusKey = focusKeyIn(filtersEl);
     filtersEl.innerHTML = `<button type="button" class="chip ${activeCategory === "Todas" ? "active" : ""}" data-category="Todas" aria-pressed="${activeCategory === "Todas"}">Todas</button>` +
       area.categories.map((cat) =>
         `<button type="button" class="chip ${activeCategory === cat ? "active" : ""}" data-category="${esc(cat)}" aria-pressed="${activeCategory === cat}">${esc(cat)}</button>`
       ).join("");
+    restoreFocusKeyIn(filtersEl, chipFocusKey);
 
     filtersEl.querySelectorAll(".chip").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -617,6 +639,15 @@
         await renderBusinesses();
       });
     });
+    list.querySelectorAll("[data-clear-slot-filters]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        serviceFilter = ""; serviceFilterEl.value = "";
+        horarioFilter = ""; horarioFilterEl.value = "";
+        setDiscountOnly(false);
+        resetPaging();
+        await renderBusinesses();
+      });
+    });
     list.querySelectorAll("[data-exit-single]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         filterChanged();
@@ -660,6 +691,8 @@
     } else if (!silent) {
       businessListEl.classList.add("loading");
     }
+    // Los botones de los avisos y estados vacíos viven dentro de la lista: si se repinta y el foco se pierde, vuelve a la lista.
+    const hadListFocus = businessListEl.contains(document.activeElement);
     try {
       await renderFavoritesBanner();
       renderFiltersToggle();
@@ -690,9 +723,15 @@
           if (discountOnly) slots = slots.filter((s) => s.status !== "available" || s.discountPct > 0);
           // El primer cupo libre de todo lo publicado (no solo del día elegido):
           // para decirle al cliente "lo más pronto que hay aquí".
-          const nextSlot = b.slots
-            .filter((s) => s.status === "available" && s.time > now && openOn(s) && CupoSchedule.describeSlot(b, s).bookable)[0] || null;
-          return { ...b, visibleSlots: slots, nextSlot };
+          const freeSlots = b.slots
+            .filter((s) => s.status === "available" && s.time > now && openOn(s) && CupoSchedule.describeSlot(b, s).bookable);
+          const nextSlot = freeSlots[0] || null;
+          // Igual, pero respetando los filtros de servicio/horario/descuento: es lo que se ofrece en el aviso
+          // "Lo más pronto" (antes prometía un cupo que el filtro escondía y el botón llevaba a un callejón).
+          const nextMatch = (serviceFilter || horarioFilter || discountOnly)
+            ? freeSlots.find((s) => (!serviceFilter || CupoSchedule.describeSlot(b, s).options.some((o) => o.name === serviceFilter)) && slotMatchesHorario(s) && (!discountOnly || s.discountPct > 0)) || null
+            : nextSlot;
+          return { ...b, visibleSlots: slots, nextSlot, nextMatch };
         });
       };
       const hasFree = (b) => b.visibleSlots.some((s) => s.status === "available");
@@ -703,11 +742,19 @@
       if (singleMode && targetBusinessId) {
         single = rawAll.find((b) => b.id === targetBusinessId) || null;
         if (single) {
+          try {
+            const full = await DataStore.getBusinessById(single.id, { slotsFrom: todayStart, slotsTo: todayStart + (MAX_DAY + 2) * DAY_MS });
+            if (mySeq !== renderSeq) return;
+            if (full) single = full;
+          } catch (err) {
+            console.error("No se pudo ampliar el negocio (se usa lo ya cargado):", err);
+          }
           base = [single];
         } else {
           singleMode = false;
           targetBusinessId = null;
           pageNotice = '<div class="list-notice warn" role="status"><span>No encontramos ese negocio: el link pudo cambiar o ya no está en CUPO. Te mostramos los demás.</span></div>';
+          syncUrl(); // el id roto ya no se queda en la barra de direcciones (ni en "Entrar/Crear cuenta")
         }
       }
       if (!single) {
@@ -752,17 +799,19 @@
         if (soonOnly) {
           hintHtml = '<div class="next-hint"><span>⚡ No hay cupos libres en las próximas 2 horas.</span><button type="button" class="btn btn-primary btn-sm" data-clear-soon>Ver todo el día</button></div>';
         } else {
-          const first = businesses.map((b) => b.nextSlot).filter(Boolean).sort((a, b) => a.time - b.time)[0];
+          const slotFilters = !!(serviceFilter || horarioFilter || discountOnly);
+          const first = businesses.map((b) => b.nextMatch).filter(Boolean).sort((a, b) => a.time - b.time)[0];
           if (first) {
             const offset = Math.round((DataStore.startOfDay(first.time) - DataStore.startOfDay(now)) / DAY_MS);
             if (offset >= 0 && offset <= MAX_DAY && offset !== dayOffset) {
-              const owner = businesses.find((b) => b.nextSlot === first);
+              const owner = businesses.find((b) => b.nextMatch === first);
               lastNextDayHint = { offset, label: dayLong(offset) };
-              hintHtml = `<div class="next-hint"><span>${esc(noCuposText(dayOffset))}. Lo más pronto: <strong>${esc(dayWord(first.time))} ${esc(first.label)}</strong>${owner && !single ? " en " + esc(owner.name) : ""}.</span><button type="button" class="btn btn-primary btn-sm" data-jump-day="${offset}">Ver ${esc(dayLong(offset))}</button></div>`;
-            } else if (offset === dayOffset) {
-              // Hay cupos ese día pero los filtros de servicio/horario/descuento los esconden (vista de un negocio).
-              hintHtml = '<div class="next-hint"><span>Ningún cupo de este día coincide con los filtros elegidos.</span></div>';
+              hintHtml = `<div class="next-hint"><span>${esc(noCuposText(dayOffset))}${slotFilters ? " con esos filtros" : ""}. Lo más pronto: <strong>${esc(dayWord(first.time))} ${esc(first.label)}</strong>${owner && !single ? " en " + esc(owner.name) : ""}.</span><button type="button" class="btn btn-primary btn-sm" data-jump-day="${offset}">Ver ${esc(dayLong(offset))}</button></div>`;
             }
+          }
+          if (!hintHtml && slotFilters) {
+            // Los filtros de servicio/horario/descuento esconden todos los cupos de este negocio: se dice y se ofrece quitarlos.
+            hintHtml = '<div class="next-hint"><span>Ningún cupo publicado de este negocio coincide con los filtros elegidos.</span><button type="button" class="btn btn-primary btn-sm" data-clear-slot-filters>Quitar filtros</button></div>';
           }
           if (!hintHtml) {
             // Nadie tiene cupos publicados en lo que se carga: se dice claro (antes: tarjetas vacías sin explicación).
@@ -772,7 +821,7 @@
       }
 
       const noticeHtml = pageNotice + (single
-        ? `<div class="list-notice"><span>Estás viendo los cupos de <strong>${esc(single.name)}</strong>.</span><button type="button" class="btn btn-outline btn-sm" data-exit-single>Ver más negocios</button></div>`
+        ? `<div class="list-notice"><span>Estás viendo los cupos de <strong>${esc(single.name)}</strong>.</span><button type="button" class="btn btn-outline btn-sm" data-exit-single>Ver todos los negocios</button></div>`
         : "");
 
       if (businesses.length === 0) {
@@ -792,13 +841,17 @@
             title = "No encontramos negocios con “" + searchInput.value.trim().slice(0, 60) + "”.";
             text = "Revisa cómo está escrito o prueba con otra palabra.";
             actions = clearBtn;
+          } else if (activeCategory !== "Todas" && !favoritesOnly && !soonOnly && !availFilters) {
+            title = "Todavía no hay negocios en " + activeCategory + ".";
+            text = "Estamos sumando negocios. Prueba otra categoría o invita al tuyo con el botón de abajo.";
+            actions = '<button type="button" class="btn btn-outline btn-sm" id="clearFiltersBtn">Ver todas las categorías</button>';
           } else if (filtered) {
             title = "No encontramos negocios con esos filtros.";
             text = "Prueba con otra categoría o quita algún filtro.";
             actions = clearBtn;
           } else {
-            title = "Todavía no hay negocios en esta categoría.";
-            text = "Estamos sumando negocios. Mientras, prueba otra categoría o invita al tuyo con el botón de abajo.";
+            title = "Todavía no hay negocios aquí.";
+            text = "Estamos sumando negocios. Mientras, invita al tuyo con el botón de abajo.";
           }
         } else if (soonOnly) {
           title = "No hay cupos libres en las próximas 2 horas.";
@@ -984,17 +1037,32 @@
         businessListEl.innerHTML = '<div class="fatal-inline" role="alert"><p>No pudimos cargar los cupos. Revisa tu conexión e inténtalo de nuevo.</p><button type="button" class="btn btn-primary" data-retry>Reintentar</button></div>';
         wireListActions(businessListEl);
       }
-      if (!silent) showToast("No se pudo actualizar. Revisa tu conexión.");
+      if (!silent) {
+        showToast("No se pudo actualizar. Revisa tu conexión.");
+        // La lista que se ve puede no corresponder a lo último que se pidió (filtro, día): se dice en pantalla.
+        if (businessListEl.querySelector(".biz-card, .empty-state") && !businessListEl.querySelector(".stale-notice")) {
+          lastListHtml = null;
+          businessListEl.insertAdjacentHTML("afterbegin", '<div class="list-notice warn stale-notice" role="status"><span>No pudimos actualizar la lista (sin conexión). Lo que ves puede no incluir tu última selección.</span><button type="button" class="btn btn-outline btn-sm" data-retry>Reintentar</button></div>');
+          wireListActions(businessListEl);
+        }
+      }
     } finally {
       businessListEl.classList.remove("loading");
       businessListEl.removeAttribute("aria-busy");
+      if (hadListFocus && document.activeElement === document.body) {
+        businessListEl.setAttribute("tabindex", "-1");
+        businessListEl.focus({ preventScroll: true });
+      }
     }
   }
 
   // Tarjeta sin cupos ese día. Si el negocio ni siquiera tiene cupos publicados, se dice y se ofrece contactarlo
   // (antes: "Sin horarios publicados para este día" sin salida).
   function emptySlotsHtml(b) {
-    if (b.nextSlot) return '<span style="color:var(--gray);font-size:13.5px">Sin horarios publicados para este día</span>';
+    if (b.nextSlot) {
+      const filtering = !!(serviceFilter || horarioFilter || discountOnly);
+      return '<span style="color:var(--gray);font-size:13.5px">' + (filtering ? "Los filtros elegidos esconden los cupos de este día" : "Sin horarios publicados para este día") + "</span>";
+    }
     const phone = b.phone;
     const wa = phone ? CupoContact.whatsappUrl("+52", phone, "Hola, vi tu negocio en CUPO. ¿Tienes algún espacio disponible? ") : null;
     const tel = phone ? CupoContact.telUrl("+52", phone) : null;
@@ -1375,7 +1443,7 @@
       searchInput.value = q;
       searchTerm = CupoValidate.fold(q);
     }
-    if (params.get("descuento") === "1") setDiscountOnly(true);
+    if (["1", "true", "si", "yes"].includes(CupoValidate.fold(params.get("descuento") || ""))) setDiscountOnly(true);
   } else {
     // En la vista de un negocio solo cuenta el día.
     const dia = CupoValidate.fold(params.get("dia") || "");
@@ -1389,10 +1457,11 @@
   renderServiceOptions();
   if (!singleMode) {
     // Servicio y horario de la URL: solo si existen en las opciones de esta categoría.
-    const svc = params.get("servicio");
-    if (svc && Array.from(serviceFilterEl.options).some((o) => o.value === svc)) { serviceFilterEl.value = svc; serviceFilter = svc; }
-    const hor = params.get("horario");
-    if (hor && HORARIO_RANGES[hor]) { horarioFilterEl.value = hor; horarioFilter = hor; }
+    const svc = CupoValidate.fold(params.get("servicio") || "");
+    const svcOpt = svc && Array.from(serviceFilterEl.options).find((o) => o.value && CupoValidate.fold(o.value) === svc);
+    if (svcOpt) { serviceFilterEl.value = svcOpt.value; serviceFilter = svcOpt.value; }
+    const hor = CupoValidate.fold(params.get("horario") || "");
+    if (hor && Object.prototype.hasOwnProperty.call(HORARIO_RANGES, hor)) { horarioFilterEl.value = hor; horarioFilter = hor; }
   }
 
   // Si traen un cupo elegido, se abre en el día de ese cupo (hasta 4 semanas adelante).
@@ -1455,7 +1524,7 @@
   }
   if (bookAfterLoad) {
     // Se limpia la URL para que recargar la página no vuelva a abrir el modal.
-    history.replaceState(null, "", location.pathname + "?negocio=" + encodeURIComponent(bookAfterLoad.businessId));
+    history.replaceState(null, "", location.pathname + "?negocio=" + encodeURIComponent(bookAfterLoad.businessId) + (dayOffset > 0 ? "&dia=" + dayOffset : ""));
     await startBooking(bookAfterLoad.businessId, bookAfterLoad.slotId);
   }
 
@@ -1466,6 +1535,7 @@
   // si el cliente está escribiendo en el buscador, para no interrumpirlo.
   let refreshing = false; // si el servidor tarda, no se acumulan peticiones en paralelo
   let lastDayKey = CupoSchedule.dateKey(Date.now());
+  let lastDayStart = DataStore.startOfDay(Date.now());
   setInterval(async () => {
     if (document.hidden || refreshing) return;
     if ([confirmModal, folioModal, reviewModal].some((m) => m.classList.contains("show"))) return;
@@ -1478,8 +1548,11 @@
         lastDayKey = today;
         // Pasó la medianoche: "Mañana" ahora es "Hoy". Se conserva la MISMA fecha que se estaba viendo
         // (antes la pestaña seguía igual y de pronto mostraba otro día sin avisar).
+        // (si la pestaña estuvo oculta varios días, se descuentan todos los que pasaron)
+        const passed = Math.max(1, Math.round((DataStore.startOfDay(Date.now()) - lastDayStart) / DAY_MS));
+        lastDayStart = DataStore.startOfDay(Date.now());
         if (dayOffset > 0 && !soonOnly) {
-          dayOffset -= 1;
+          dayOffset = Math.max(0, dayOffset - passed);
           showToast("Pasó la medianoche: actualizamos los días.");
         }
         renderDayTabs();

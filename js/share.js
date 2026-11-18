@@ -40,11 +40,11 @@ const CupoShare = (() => {
   // ── Mensajes ─────────────────────────────────────────────────────────────
   // Para que el negocio se lo mande a SUS clientes (WhatsApp, estados, grupos).
   function inviteMessage(business) {
-    return "¡Hola! Ya puedes reservar tu cita en " + business.name + " desde tu celular, sin escribir y viendo los horarios libres (la primera vez te pide crear una cuenta rápida): " + bookingLink(business.id);
+    return "¡Hola! Ya puedes reservar tu cita en " + waSafe(business.name) + " desde tu celular, sin escribir y viendo los horarios libres (la primera vez te pide crear una cuenta rápida): " + bookingLink(business.id);
   }
 
   // WhatsApp da formato con * _ ~ ` : un nombre de negocio con esos signos rompería el texto en negritas.
-  const waSafe = (text) => String(text == null ? "" : text).replace(/[*_~`]/g, "");
+  const waSafe = (text) => String(text == null ? "" : text).replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim();
 
   // "Hoy" / "Mañana" / "Jue 12 nov" para un cupo de otro día (cuando el mensaje no es de hoy).
   function dayWordOf(ts) {
@@ -72,7 +72,7 @@ const CupoShare = (() => {
   // Un solo cupo (botón en el detalle del cupo): el link abre justo ese cupo.
   function slotMessage(business, slot) {
     // Con el día: un cupo de mañana o de la semana que entra sin decir cuándo es confunde (y lo reserva otro día).
-    return "✨ ¡Cupo libre en " + business.name + "! " + slotText(business, slot, true) + ".\nReserva en un toque 👉 " + bookingLink(business.id, slot.id);
+    return "✨ ¡Cupo libre en " + waSafe(business.name) + "! " + slotText(business, slot, true) + ".\nReserva en un toque 👉 " + bookingLink(business.id, slot.id);
   }
 
   // Todos los cupos libres que quedan (hoy): el negocio los manda y llena el día.
@@ -81,7 +81,7 @@ const CupoShare = (() => {
     const shown = slots.slice(0, limit);
     const lines = shown.map((s) => "• " + slotText(business, s));
     if (slots.length > shown.length) lines.push("• y " + (slots.length - shown.length) + " más");
-    return "✨ *" + (slots.length === 1 ? "Cupo libre hoy en " : "Cupos libres hoy en ") + waSafe(business.name) + "*\n" + lines.join("\n") + "\nReserva en un toque 👉 " + bookingLink(business.id);
+    return "✨ *" + (slots.length === 1 ? "Cupo libre hoy en " : "Cupos libres hoy en ") + waSafe(business.name).trim() + "*\n" + lines.join("\n") + "\nReserva en un toque 👉 " + bookingLink(business.id);
   }
 
   // Para que un cliente invite a su barbería/salón favorito a sumarse (así crece la oferta).
