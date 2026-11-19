@@ -2161,3 +2161,8 @@ body.area-soon #dayTabs, body.area-soon .search-row, body.area-soon #moreFilters
 
 /* Al imprimir, la altura mínima de la tarjeta de acceso no debe generar una segunda hoja en blanco. */
 @media print { .auth-wrap { min-height: 0 !important; } }
+
+/* Logo de marca (assets/logo.png: ícono + "cupo"). Reemplaza el círculo con la "C". */
+.logo-img { display: block; height: 32px; width: auto; }
+@media (max-width: 480px) { .logo-img { height: 28px; } }
+@media print { .poster-logo .logo-img { height: 72px; width: auto; margin: 0 auto; } }

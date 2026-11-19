@@ -84,7 +84,9 @@ se llenan las credenciales; hasta entonces la app funciona exactamente como ante
   la necesita: `schema.sql` ya lo trae). Idempotente.
 - `CNAME` — un archivo de una sola línea (`mycupo.com`) que le dice a GitHub Pages
   qué dominio propio debe servir — ver "Dominio propio: mycupo.com" abajo.
-- `favicon.svg` — ícono del navegador, el mismo círculo índigo con "C" del logo.
+- `assets/logo.png` (551×170, fondo transparente: la "C" morada con punto amarillo + "cupo")
+  y `assets/logo-mark.png` (solo la "C"), `favicon.ico` (16/32/48) y `assets/favicon-32.png` —
+  ver "Logo" en "Ronda 5". El `favicon.svg` anterior ya no existe.
 - `404.html` — página de error con la marca de CUPO; GitHub Pages la sirve sola.
 - `assets/app-screenshot.jpg`, `assets/negocio-agenda.jpg`, `assets/negocio-ventas.jpg` — capturas de la
   interfaz de hoy con **negocios ficticios** (nombres inventados; antes salían negocios reales con
@@ -462,7 +464,7 @@ principales en escritorio y móvil — encontrados y corregidos:
 - **"Ingresos por día" en Ventas ahora es una línea con área rellena** (SVG puro,
   sin librerías) en vez de barras — con un solo punto (período "Hoy") cae de vuelta
   a las barras, porque una línea de un solo punto no dice nada.
-- **Favicon** (`favicon.svg`, el mismo círculo índigo con "C") y **página 404**
+- **Favicon** (entonces `favicon.svg`; hoy lo reemplaza el del logo nuevo) y **página 404**
   (`404.html`) con la marca de CUPO en vez de la genérica de GitHub Pages.
 
 Probado con Playwright contra las 4 páginas principales en escritorio y móvil — sin
@@ -1098,6 +1100,31 @@ contra Postgres local ya cubren su terreno). Sin ALTA ni errores de JS; se corri
 - **Sin cubrir por los bots** (límite de herramientas): modal "Cerrar este día", editor de horario con varias personas,
   `localStorage` lleno, portapapeles denegado y el cartel impreso con un nombre larguísimo revisado a ojo.
 
+## Ronda 5: logo (19 nov 2026)
+
+El usuario eligió su logo (una "C" morada con un punto amarillo y la palabra "cupo" en azul marino, en
+minúsculas) y se puso en todo el sitio:
+
+- **Archivos:** `assets/logo.png` (551×170, transparente, ~31 KB; el encabezado lo muestra a 104×32) y
+  `assets/logo-mark.png` (solo la "C", 139×147). Salieron de la imagen que mandó el usuario (JPG sobre
+  blanco): se amplió 4×, se quitó el blanco con `-fuzz … -transparent white`, se redujo y se recortó. Si algún día
+  hay un SVG o un PNG de mayor resolución del diseñador, conviene reemplazarlos: el actual es un raster
+  reconstruido de un JPG.
+- **Íconos:** `favicon.ico` (16/32/48, en la raíz para los navegadores que lo piden solo),
+  `assets/favicon-32.png`, `assets/apple-touch-icon.png` (180) e `assets/icon-192.png` / `icon-512.png`
+  (los dos del manifest, con fondo blanco). El `favicon.svg` viejo se borró.
+- **Marcado:** en las 10 páginas el logo es `<img class="logo-img" src="assets/logo.png" alt="CUPO" width="104"
+  height="32">` (el cartel imprimible de `negocio.html` usa 208×64). Estilos en `css/styles.css` (`.logo-img`: 32 px,
+  28 px en ≤480 px, 72 px al imprimir el cartel). `.logo-badge` ya no se usa.
+- **Imagen para compartir** (`assets/og-image.jpg`, 63 KB) y las **3 capturas** (`app-screenshot.jpg`,
+  `negocio-agenda.jpg`, `negocio-ventas.jpg`) se regeneraron con el logo nuevo (negocios ficticios).
+- **Paleta:** el sitio sigue en índigo `#4F46E5`; el morado del logo es un poco más vivo. No se tocaron los colores
+  del sitio (es decisión de marca; se puede alinear cuando quieras).
+
+**Cómo se probó:** `trust-test` 31, `routes-test` 67, `round3-fixes-test` 98, `round4-cliente-test` 13,
+`round4-negocio-test` 13 y `regression` 21 (todas sin cambios de resultado); sin desborde a 320/360/390/1280 px
+(`ov-r3`); auditoría de contraste sin fallos (0 en las 7 pantallas) y un objetivo táctil de 24 px que ya existía.
+
 ## Pendiente / decisiones abiertas
 
 **Nuevo (17 nov 2026) — necesita algo tuyo:**
@@ -1204,9 +1231,8 @@ que no se puede crear desde aquí) — pendiente a propósito para hacerlo junto
 - Estructura de costos y métricas clave del Lean Canvas son hipótesis de arranque, no
   validadas con negocios reales todavía.
 - Modelo de cobro al negocio (comisión por reserva / suscripción / freemium) sin decidir.
-- **Logo:** se exploraron varias opciones (ver conversación) pero nunca se eligió una —
-  sigue el círculo índigo con "C" por default. Puedo diseñarlo, pero elegir cuál es
-  decisión tuya.
+- ~~Logo~~ — **elegido y puesto (19 nov 2026)**: ver "Logo" en "Ronda 5". Queda por decidir si se
+  alinea la paleta del sitio (índigo `#4F46E5`) con el morado del logo.
 - **Analítica del sitio:** para saber cuánta gente entra una vez que `mycupo.com` esté
   público, falta elegir/crear cuenta en un servicio (ej. Plausible, Simple Analytics,
   Google Analytics) — cuál usar y la cuenta son tuyos.
